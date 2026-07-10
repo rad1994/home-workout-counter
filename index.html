@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0f172a">
+<title>Home Workout Counter</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: #0f172a; color: #f1f5f9; font-family: system-ui, -apple-system, sans-serif; overflow: hidden; }
+
+  #app { display: flex; flex-direction: column; height: 100%; }
+
+  /* ---- Setup screen ---- */
+  #setup {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; gap: 20px; padding: 24px; text-align: center; overflow-y: auto;
+  }
+  #setup h1 { font-size: 1.8rem; }
+  #exerciseGrid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; max-width: 420px;
+  }
+  .exercise-card {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 18px 8px; border-radius: 14px; border: 2px solid #334155;
+    background: #1e293b; color: #f1f5f9; cursor: pointer; font-size: 1rem; font-weight: 600;
+  }
+  .exercise-card .icon { font-size: 2.2rem; }
+  .exercise-card .pl { font-size: .8rem; font-weight: 400; color: #94a3b8; }
+  .exercise-card.selected .pl { color: #86efac; }
+  .exercise-card.selected { border-color: #22c55e; background: #14532d; }
+  #exerciseHint { color: #94a3b8; font-size: .9rem; max-width: 420px; line-height: 1.5; min-height: 2.7em; }
+
+  .goal-picker { display: flex; align-items: center; gap: 16px; }
+  .goal-picker button {
+    width: 52px; height: 52px; border-radius: 50%; border: none; font-size: 1.7rem;
+    background: #1e293b; color: #f1f5f9; cursor: pointer;
+  }
+  .goal-picker button:active { background: #334155; }
+  #goalValue { font-size: 2.6rem; font-weight: 700; min-width: 90px; }
+  .primary-btn {
+    padding: 15px 48px; font-size: 1.2rem; font-weight: 600; border: none; border-radius: 12px;
+    background: #22c55e; color: #052e16; cursor: pointer;
+  }
+  .primary-btn:active { background: #16a34a; }
+
+  /* ---- Workout screen ---- */
+  #workout { display: none; position: relative; height: 100%; }
+  #videoWrap { position: absolute; inset: 0; }
+  video, #overlay {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; transform: scaleX(-1); /* mirror */
+  }
+  #hud {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 16px; pointer-events: none;
+  }
+  #repDisplay {
+    font-size: 5rem; font-weight: 800; line-height: 1;
+    text-shadow: 0 2px 12px rgba(0,0,0,.8);
+  }
+  #goalDisplay { font-size: 1.4rem; color: #cbd5e1; text-shadow: 0 1px 8px rgba(0,0,0,.8); }
+  #exerciseLabel { font-size: 1rem; color: #cbd5e1; text-shadow: 0 1px 8px rgba(0,0,0,.8); margin-top: 4px; }
+  #stateBadge {
+    padding: 8px 16px; border-radius: 999px; font-weight: 600; font-size: 1rem;
+    background: rgba(30, 41, 59, .8); backdrop-filter: blur(4px);
+  }
+  #stateBadge.down { background: rgba(234, 179, 8, .85); color: #1c1917; }
+  #stateBadge.up { background: rgba(34, 197, 94, .85); color: #052e16; }
+
+  #hint {
+    position: absolute; bottom: 96px; left: 0; right: 0; text-align: center;
+    font-size: 1rem; color: #e2e8f0; text-shadow: 0 1px 8px rgba(0,0,0,.9); padding: 0 24px;
+  }
+  #stopBtn {
+    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+    padding: 12px 40px; font-size: 1.1rem; font-weight: 600;
+    border: none; border-radius: 999px; background: rgba(239, 68, 68, .9); color: #fff; cursor: pointer;
+  }
+
+  /* ---- Done screen ---- */
+  #done {
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; gap: 20px; text-align: center; padding: 24px;
+  }
+  #done h1 { font-size: 2.6rem; }
+  #done .big { font-size: 5rem; font-weight: 800; color: #22c55e; }
+
+  #loading {
+    position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+    background: rgba(15, 23, 42, .9); z-index: 10; font-size: 1.2rem; flex-direction: column; gap: 12px;
+  }
+  .spinner {
+    width: 40px; height: 40px; border: 4px solid #334155; border-top-color: #22c55e;
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Setup -->
+  <div id="setup">
+    <h1>🏋️ Home Workout Counter</h1>
+    <div id="exerciseGrid">
+      <button class="exercise-card selected" data-ex="pushup"><span class="icon">💪</span>Push-Ups<span class="pl">pompki</span></button>
+      <button class="exercise-card" data-ex="squat"><span class="icon">🦵</span>Squats<span class="pl">przysiady</span></button>
+      <button class="exercise-card" data-ex="jack"><span class="icon">🤸</span>Jumping Jacks<span class="pl">pajacyki</span></button>
+      <button class="exercise-card" data-ex="situp"><span class="icon">🧘</span>Sit-Ups<span class="pl">brzuszki</span></button>
+    </div>
+    <p id="exerciseHint"></p>
+    <div>
+      <div style="color:#94a3b8; margin-bottom:6px;">Goal</div>
+      <div class="goal-picker">
+        <button id="goalMinus">−</button>
+        <div id="goalValue">10</div>
+        <button id="goalPlus">+</button>
+      </div>
+    </div>
+    <button id="startBtn" class="primary-btn">Start Workout</button>
+  </div>
+
+  <!-- Workout -->
+  <div id="workout">
+    <div id="videoWrap">
+      <video id="video" playsinline muted></video>
+      <canvas id="overlay"></canvas>
+    </div>
+    <div id="hud">
+      <div>
+        <div id="repDisplay">0</div>
+        <div id="goalDisplay">/ 10</div>
+        <div id="exerciseLabel"></div>
+      </div>
+      <div id="stateBadge">Get in position</div>
+    </div>
+    <div id="hint"></div>
+    <button id="stopBtn">Stop</button>
+    <div id="loading"><div class="spinner"></div><div>Loading pose model…</div></div>
+  </div>
+
+  <!-- Done -->
+  <div id="done">
+    <h1>🎉 Goal reached!</h1>
+    <div class="big" id="finalCount"></div>
+    <div id="doneLabel" style="color:#94a3b8"></div>
+    <button id="againBtn" class="primary-btn">Go Again</button>
+  </div>
+
+</div>
+
+<script type="module">
+import { PoseLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+// ---------- UI elements ----------
+const setupEl = document.getElementById("setup");
+const workoutEl = document.getElementById("workout");
+const doneEl = document.getElementById("done");
+const loadingEl = document.getElementById("loading");
+const video = document.getElementById("video");
+const overlay = document.getElementById("overlay");
+const ctx = overlay.getContext("2d");
+const repDisplay = document.getElementById("repDisplay");
+const goalDisplay = document.getElementById("goalDisplay");
+const stateBadge = document.getElementById("stateBadge");
+const hint = document.getElementById("hint");
+const finalCount = document.getElementById("finalCount");
+const exerciseLabel = document.getElementById("exerciseLabel");
+const exerciseHint = document.getElementById("exerciseHint");
+const doneLabel = document.getElementById("doneLabel");
+
+// ---------- MediaPipe pose landmark indices ----------
+const LM = {
+  NOSE: 0,
+  SHOULDER_L: 11, SHOULDER_R: 12,
+  ELBOW_L: 13, ELBOW_R: 14,
+  WRIST_L: 15, WRIST_R: 16,
+  HIP_L: 23, HIP_R: 24,
+  KNEE_L: 25, KNEE_R: 26,
+  ANKLE_L: 27, ANKLE_R: 28
+};
+
+function angleDeg(a, b, c) {
+  // Angle at point b, formed by points a-b-c
+  const v1 = { x: a.x - b.x, y: a.y - b.y };
+  const v2 = { x: c.x - b.x, y: c.y - b.y };
+  const dot = v1.x * v2.x + v1.y * v2.y;
+  const m1 = Math.hypot(v1.x, v1.y);
+  const m2 = Math.hypot(v2.x, v2.y);
+  if (m1 === 0 || m2 === 0) return 180;
+  return Math.acos(Math.min(1, Math.max(-1, dot / (m1 * m2)))) * 180 / Math.PI;
+}
+
+function vis(lm, ...idx) {
+  return Math.min(...idx.map(i => lm[i].visibility ?? 1));
+}
+
+// Average joint angle across whichever sides are visible; null if neither is
+function sideAngle(lm, tripletL, tripletR) {
+  const angles = [];
+  if (vis(lm, ...tripletL) > 0.5) angles.push(angleDeg(lm[tripletL[0]], lm[tripletL[1]], lm[tripletL[2]]));
+  if (vis(lm, ...tripletR) > 0.5) angles.push(angleDeg(lm[tripletR[0]], lm[tripletR[1]], lm[tripletR[2]]));
+  if (angles.length === 0) return null;
+  return angles.reduce((s, v) => s + v, 0) / angles.length;
+}
+
+// ---------- Exercise definitions ----------
+// classify(lm) returns "down" | "up" | null (null = between thresholds or not visible).
+// A rep is counted on the down -> up transition.
+const EXERCISES = {
+  pushup: {
+    name: "Push-Ups",
+    hint: "Place the phone on the floor 1–2 m away, viewing you from the side. Shoulders, elbows and wrists must be visible.",
+    trackHint: "Arms not visible — adjust the camera",
+    classify(lm) {
+      const angle = sideAngle(lm,
+        [LM.SHOULDER_L, LM.ELBOW_L, LM.WRIST_L],
+        [LM.SHOULDER_R, LM.ELBOW_R, LM.WRIST_R]);
+      if (angle === null) return null;
+      if (angle < 95) return "down";
+      if (angle > 155) return "up";
+      return undefined;
+    }
+  },
+  squat: {
+    name: "Squats",
+    hint: "Prop the phone up 2–3 m away so your whole body is visible from the front or the side.",
+    trackHint: "Legs not visible — step back from the camera",
+    classify(lm) {
+      const angle = sideAngle(lm,
+        [LM.HIP_L, LM.KNEE_L, LM.ANKLE_L],
+        [LM.HIP_R, LM.KNEE_R, LM.ANKLE_R]);
+      if (angle === null) return null;
+      if (angle < 110) return "down";
+      if (angle > 160) return "up";
+      return undefined;
+    }
+  },
+  jack: {
+    name: "Jumping Jacks",
+    hint: "Prop the phone up 2–3 m away, facing you from the front. Whole body including hands overhead must fit in frame.",
+    trackHint: "Whole body not visible — step back from the camera",
+    classify(lm) {
+      if (vis(lm, LM.WRIST_L, LM.WRIST_R, LM.ANKLE_L, LM.ANKLE_R, LM.SHOULDER_L, LM.SHOULDER_R, LM.NOSE) < 0.5) return null;
+      const shoulderWidth = Math.abs(lm[LM.SHOULDER_L].x - lm[LM.SHOULDER_R].x);
+      const ankleSpread = Math.abs(lm[LM.ANKLE_L].x - lm[LM.ANKLE_R].x);
+      const wristsUp = lm[LM.WRIST_L].y < lm[LM.NOSE].y && lm[LM.WRIST_R].y < lm[LM.NOSE].y;
+      const wristsDown = lm[LM.WRIST_L].y > lm[LM.SHOULDER_L].y && lm[LM.WRIST_R].y > lm[LM.SHOULDER_R].y;
+      const legsOpen = ankleSpread > shoulderWidth * 1.4;
+      const legsClosed = ankleSpread < shoulderWidth * 1.1;
+      // "down" = closed position (arms low, feet together), "up" = star position
+      if (wristsUp && legsOpen) return "up";
+      if (wristsDown && legsClosed) return "down";
+      return undefined;
+    }
+  },
+  situp: {
+    name: "Sit-Ups",
+    hint: "Place the phone on the floor 1–2 m away, viewing you from the side. Lie down with knees bent.",
+    trackHint: "Torso not visible — adjust the camera",
+    // "down" = crunched up (hip angle small), "up" = lying back down; rep counts when you return down
+    classify(lm) {
+      const angle = sideAngle(lm,
+        [LM.SHOULDER_L, LM.HIP_L, LM.KNEE_L],
+        [LM.SHOULDER_R, LM.HIP_R, LM.KNEE_R]);
+      if (angle === null) return null;
+      if (angle < 80) return "down";
+      if (angle > 115) return "up";
+      return undefined;
+    }
+  }
+};
+
+// ---------- Exercise picker ----------
+let currentExercise = "pushup";
+const cards = document.querySelectorAll(".exercise-card");
+function selectExercise(key) {
+  currentExercise = key;
+  cards.forEach(c => c.classList.toggle("selected", c.dataset.ex === key));
+  exerciseHint.textContent = EXERCISES[key].hint;
+}
+cards.forEach(c => c.onclick = () => selectExercise(c.dataset.ex));
+selectExercise("pushup");
+
+// ---------- Goal picker ----------
+let goal = 10;
+const goalValue = document.getElementById("goalValue");
+document.getElementById("goalMinus").onclick = () => { goal = Math.max(1, goal - 1); goalValue.textContent = goal; };
+document.getElementById("goalPlus").onclick = () => { goal = Math.min(200, goal + 1); goalValue.textContent = goal; };
+
+// ---------- Audio ----------
+let audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === "suspended") audioCtx.resume();
+}
+function tone(freq, startDelay, duration, volume = 0.4, type = "sine") {
+  const t0 = audioCtx.currentTime + startDelay;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(volume, t0);
+  gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t0);
+  osc.stop(t0 + duration);
+}
+function repBeep() { tone(880, 0, 0.15); }
+function goalFanfare() {
+  tone(523, 0.00, 0.18, 0.45, "triangle"); // C5
+  tone(659, 0.18, 0.18, 0.45, "triangle"); // E5
+  tone(784, 0.36, 0.18, 0.45, "triangle"); // G5
+  tone(1047, 0.54, 0.5, 0.5, "triangle");  // C6
+}
+function speak(text) {
+  if (!("speechSynthesis" in window)) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "en-US";
+  u.rate = 1.1;
+  speechSynthesis.speak(u);
+}
+
+// ---------- Pose detection ----------
+let landmarker = null;
+let running = false;
+let reps = 0;
+let phase = "up";
+let lostFrames = 0;
+let stream = null;
+
+async function loadModel() {
+  if (landmarker) return;
+  const vision = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+  );
+  landmarker = await PoseLandmarker.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+      delegate: "GPU"
+    },
+    runningMode: "VIDEO",
+    numPoses: 1
+  });
+}
+
+const SKELETON_PAIRS = [
+  [LM.SHOULDER_L, LM.ELBOW_L], [LM.ELBOW_L, LM.WRIST_L],
+  [LM.SHOULDER_R, LM.ELBOW_R], [LM.ELBOW_R, LM.WRIST_R],
+  [LM.SHOULDER_L, LM.SHOULDER_R],
+  [LM.SHOULDER_L, LM.HIP_L], [LM.SHOULDER_R, LM.HIP_R],
+  [LM.HIP_L, LM.HIP_R],
+  [LM.HIP_L, LM.KNEE_L], [LM.KNEE_L, LM.ANKLE_L],
+  [LM.HIP_R, LM.KNEE_R], [LM.KNEE_R, LM.ANKLE_R]
+];
+const SKELETON_POINTS = [...new Set(SKELETON_PAIRS.flat())];
+
+function drawSkeleton(lm) {
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+  ctx.strokeStyle = phase === "down" ? "#eab308" : "#22c55e";
+  ctx.lineWidth = 4;
+  for (const [i, j] of SKELETON_PAIRS) {
+    if (vis(lm, i, j) < 0.5) continue;
+    ctx.beginPath();
+    ctx.moveTo(lm[i].x * overlay.width, lm[i].y * overlay.height);
+    ctx.lineTo(lm[j].x * overlay.width, lm[j].y * overlay.height);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "#f1f5f9";
+  for (const i of SKELETON_POINTS) {
+    if ((lm[i].visibility ?? 1) < 0.5) continue;
+    ctx.beginPath();
+    ctx.arc(lm[i].x * overlay.width, lm[i].y * overlay.height, 6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function onRep() {
+  reps++;
+  repDisplay.textContent = reps;
+  if (reps >= goal) {
+    finishWorkout();
+  } else {
+    repBeep();
+    speak(String(reps));
+  }
+}
+
+let lastVideoTime = -1;
+function loop() {
+  if (!running) return;
+  if (video.currentTime !== lastVideoTime && video.readyState >= 2) {
+    lastVideoTime = video.currentTime;
+    const result = landmarker.detectForVideo(video, performance.now());
+    const ex = EXERCISES[currentExercise];
+    if (result.landmarks && result.landmarks.length > 0) {
+      lostFrames = 0;
+      const lm = result.landmarks[0];
+      drawSkeleton(lm);
+      const state = ex.classify(lm);
+      if (state === null) {
+        hint.textContent = ex.trackHint;
+      } else {
+        hint.textContent = "";
+        if (phase === "up" && state === "down") {
+          phase = "down";
+          stateBadge.textContent = "DOWN";
+          stateBadge.className = "down";
+        } else if (phase === "down" && state === "up") {
+          phase = "up";
+          stateBadge.textContent = "UP";
+          stateBadge.className = "up";
+          onRep();
+        }
+      }
+    } else {
+      lostFrames++;
+      if (lostFrames > 30) {
+        ctx.clearRect(0, 0, overlay.width, overlay.height);
+        hint.textContent = "No person detected — step into view";
+        stateBadge.textContent = "Get in position";
+        stateBadge.className = "";
+      }
+    }
+  }
+  requestAnimationFrame(loop);
+}
+
+// ---------- Screens / lifecycle ----------
+async function startWorkout() {
+  ensureAudio();
+  const ex = EXERCISES[currentExercise];
+  setupEl.style.display = "none";
+  workoutEl.style.display = "block";
+  loadingEl.style.display = "flex";
+  reps = 0;
+  phase = "up";
+  repDisplay.textContent = "0";
+  goalDisplay.textContent = "/ " + goal;
+  exerciseLabel.textContent = ex.name;
+  stateBadge.textContent = "Get in position";
+  stateBadge.className = "";
+  hint.textContent = "";
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    overlay.width = video.videoWidth;
+    overlay.height = video.videoHeight;
+    await loadModel();
+    loadingEl.style.display = "none";
+    running = true;
+    speak("Get ready. " + goal + " " + ex.name + ". Go!");
+    requestAnimationFrame(loop);
+  } catch (err) {
+    loadingEl.style.display = "none";
+    alert("Could not start: " + err.message + "\n\nCamera access requires HTTPS (or localhost) and permission.");
+    stopWorkout(false);
+  }
+}
+
+function stopCamera() {
+  running = false;
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+  video.srcObject = null;
+}
+
+function stopWorkout(showDone) {
+  stopCamera();
+  workoutEl.style.display = "none";
+  if (showDone) {
+    finalCount.textContent = reps;
+    doneLabel.textContent = EXERCISES[currentExercise].name + " completed";
+    doneEl.style.display = "flex";
+  } else {
+    setupEl.style.display = "flex";
+  }
+}
+
+function finishWorkout() {
+  goalFanfare();
+  speak("Congratulations! Goal reached: " + reps + " " + EXERCISES[currentExercise].name + "!");
+  stateBadge.textContent = "DONE!";
+  setTimeout(() => stopWorkout(true), 1200);
+}
+
+document.getElementById("startBtn").onclick = startWorkout;
+document.getElementById("stopBtn").onclick = () => stopWorkout(false);
+document.getElementById("againBtn").onclick = () => {
+  doneEl.style.display = "none";
+  setupEl.style.display = "flex";
+};
+</script>
+</body>
+</html>
