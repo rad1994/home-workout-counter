@@ -26,8 +26,6 @@
     background: #1e293b; color: #f1f5f9; cursor: pointer; font-size: 1rem; font-weight: 600;
   }
   .exercise-card .icon { font-size: 2.2rem; }
-  .exercise-card .pl { font-size: .8rem; font-weight: 400; color: #94a3b8; }
-  .exercise-card.selected .pl { color: #86efac; }
   .exercise-card.selected { border-color: #22c55e; background: #14532d; }
   #exerciseHint { color: #94a3b8; font-size: .9rem; max-width: 420px; line-height: 1.5; min-height: 2.7em; }
 
@@ -105,10 +103,10 @@
   <div id="setup">
     <h1>🏋️ Home Workout Counter</h1>
     <div id="exerciseGrid">
-      <button class="exercise-card selected" data-ex="pushup"><span class="icon">💪</span>Push-Ups<span class="pl">pompki</span></button>
-      <button class="exercise-card" data-ex="squat"><span class="icon">🦵</span>Squats<span class="pl">przysiady</span></button>
-      <button class="exercise-card" data-ex="jack"><span class="icon">🤸</span>Jumping Jacks<span class="pl">pajacyki</span></button>
-      <button class="exercise-card" data-ex="situp"><span class="icon">🧘</span>Sit-Ups<span class="pl">brzuszki</span></button>
+      <button class="exercise-card selected" data-ex="pushup"><span class="icon">💪</span>Push-Ups</button>
+      <button class="exercise-card" data-ex="squat"><span class="icon">🦵</span>Squats</button>
+      <button class="exercise-card" data-ex="jack"><span class="icon">🤸</span>Jumping Jacks</button>
+      <button class="exercise-card" data-ex="situp"><span class="icon">🧘</span>Sit-Ups</button>
     </div>
     <p id="exerciseHint"></p>
     <div>
@@ -207,29 +205,54 @@ function sideAngle(lm, tripletL, tripletR) {
   return angles.reduce((s, v) => s + v, 0) / angles.length;
 }
 
+// Torso inclination in degrees: 0 = horizontal (plank / lying), 90 = standing upright.
+// Landmark coords are normalized to the frame, so rescale x by the aspect ratio.
+function torsoAngle(lm) {
+  if (vis(lm, LM.SHOULDER_L, LM.SHOULDER_R, LM.HIP_L, LM.HIP_R) < 0.5) return null;
+  const sh = { x: (lm[LM.SHOULDER_L].x + lm[LM.SHOULDER_R].x) / 2, y: (lm[LM.SHOULDER_L].y + lm[LM.SHOULDER_R].y) / 2 };
+  const hp = { x: (lm[LM.HIP_L].x + lm[LM.HIP_R].x) / 2, y: (lm[LM.HIP_L].y + lm[LM.HIP_R].y) / 2 };
+  const aspect = (overlay.width || 640) / (overlay.height || 480);
+  const dx = Math.abs(sh.x - hp.x) * aspect;
+  const dy = Math.abs(sh.y - hp.y);
+  return Math.atan2(dy, dx) * 180 / Math.PI;
+}
+
 // ---------- Exercise definitions ----------
-// classify(lm) returns "down" | "up" | null (null = between thresholds or not visible).
+// classify(lm) returns "down" | "up" | null (null = posture doesn't match the exercise
+// or landmarks not visible) | undefined (between thresholds).
 // A rep is counted on the down -> up transition.
+// minPhaseMs: each phase must last at least this long before the next transition counts —
+// rejects twitches and other movements that briefly cross the angle thresholds.
 const EXERCISES = {
   pushup: {
     name: "Push-Ups",
     hint: "Place the phone on the floor 1–2 m away, viewing you from the side. Shoulders, elbows and wrists must be visible.",
-    trackHint: "Arms not visible — adjust the camera",
+    trackHint: "Get into push-up position — body horizontal, side view",
+    minPhaseMs: 350,
     classify(lm) {
+      // Posture gate: torso must be roughly horizontal (plank), so standing
+      // movements like bending over don't register as push-ups
+      const torso = torsoAngle(lm);
+      if (torso === null || torso > 40) return null;
       const angle = sideAngle(lm,
         [LM.SHOULDER_L, LM.ELBOW_L, LM.WRIST_L],
         [LM.SHOULDER_R, LM.ELBOW_R, LM.WRIST_R]);
       if (angle === null) return null;
-      if (angle < 95) return "down";
-      if (angle > 155) return "up";
+      if (angle < 100) return "down";
+      if (angle > 150) return "up";
       return undefined;
     }
   },
   squat: {
     name: "Squats",
     hint: "Prop the phone up 2–3 m away so your whole body is visible from the front or the side.",
-    trackHint: "Legs not visible — step back from the camera",
+    trackHint: "Stand up straight with your legs visible",
+    minPhaseMs: 350,
     classify(lm) {
+      // Posture gate: torso must stay fairly upright (a forward lean while
+      // squatting is fine, lying or plank positions are not)
+      const torso = torsoAngle(lm);
+      if (torso === null || torso < 30) return null;
       const angle = sideAngle(lm,
         [LM.HIP_L, LM.KNEE_L, LM.ANKLE_L],
         [LM.HIP_R, LM.KNEE_R, LM.ANKLE_R]);
@@ -242,9 +265,13 @@ const EXERCISES = {
   jack: {
     name: "Jumping Jacks",
     hint: "Prop the phone up 2–3 m away, facing you from the front. Whole body including hands overhead must fit in frame.",
-    trackHint: "Whole body not visible — step back from the camera",
+    trackHint: "Stand facing the camera, whole body in frame",
+    minPhaseMs: 250,
     classify(lm) {
       if (vis(lm, LM.WRIST_L, LM.WRIST_R, LM.ANKLE_L, LM.ANKLE_R, LM.SHOULDER_L, LM.SHOULDER_R, LM.NOSE) < 0.5) return null;
+      // Posture gate: must be standing upright
+      const torso = torsoAngle(lm);
+      if (torso === null || torso < 50) return null;
       const shoulderWidth = Math.abs(lm[LM.SHOULDER_L].x - lm[LM.SHOULDER_R].x);
       const ankleSpread = Math.abs(lm[LM.ANKLE_L].x - lm[LM.ANKLE_R].x);
       const wristsUp = lm[LM.WRIST_L].y < lm[LM.NOSE].y && lm[LM.WRIST_R].y < lm[LM.NOSE].y;
@@ -260,9 +287,18 @@ const EXERCISES = {
   situp: {
     name: "Sit-Ups",
     hint: "Place the phone on the floor 1–2 m away, viewing you from the side. Lie down with knees bent.",
-    trackHint: "Torso not visible — adjust the camera",
+    trackHint: "Lie on your back with knees bent, side view",
+    minPhaseMs: 400,
     // "down" = crunched up (hip angle small), "up" = lying back down; rep counts when you return down
     classify(lm) {
+      // Posture gates: knees must be bent and torso can't be upright, so a
+      // standing bow (straight legs) never registers as a sit-up
+      const knee = sideAngle(lm,
+        [LM.HIP_L, LM.KNEE_L, LM.ANKLE_L],
+        [LM.HIP_R, LM.KNEE_R, LM.ANKLE_R]);
+      if (knee === null || knee > 130) return null;
+      const torso = torsoAngle(lm);
+      if (torso === null || torso > 65) return null;
       const angle = sideAngle(lm,
         [LM.SHOULDER_L, LM.HIP_L, LM.KNEE_L],
         [LM.SHOULDER_R, LM.HIP_R, LM.KNEE_R]);
@@ -335,11 +371,12 @@ let stream = null;
 // Counting starts only after the user holds the starting ("up") position for a moment,
 // and each phase change must persist for a few frames to filter out detection flicker.
 const READY_FRAMES = 25;   // ~1 s in the start position before counting begins
-const STABLE_FRAMES = 4;   // consecutive frames required to accept a phase change
+const STABLE_FRAMES = 5;   // consecutive frames required to accept a phase change
 let ready = false;
 let readyFrames = 0;
 let candState = null;
 let candFrames = 0;
+let phaseStartTime = 0;    // when the current phase began (for minPhaseMs)
 
 async function loadModel() {
   if (landmarker) return;
@@ -425,6 +462,7 @@ function loop() {
           if (readyFrames >= READY_FRAMES) {
             ready = true;
             phase = "up";
+            phaseStartTime = performance.now();
             hint.textContent = "";
             stateBadge.textContent = "GO!";
             stateBadge.className = "up";
@@ -446,13 +484,18 @@ function loop() {
           candState = state;
           candFrames = 1;
         }
-        if (candFrames >= STABLE_FRAMES && candState !== phase) {
+        // Accept a phase change only after the current phase lasted minPhaseMs —
+        // this rejects movements that merely flick past the thresholds
+        if (candFrames >= STABLE_FRAMES && candState !== phase
+            && performance.now() - phaseStartTime >= ex.minPhaseMs) {
           if (phase === "up" && candState === "down") {
             phase = "down";
+            phaseStartTime = performance.now();
             stateBadge.textContent = "DOWN";
             stateBadge.className = "down";
           } else if (phase === "down" && candState === "up") {
             phase = "up";
+            phaseStartTime = performance.now();
             stateBadge.textContent = "UP";
             stateBadge.className = "up";
             onRep();
