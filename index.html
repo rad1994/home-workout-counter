@@ -152,6 +152,57 @@
   }
   #doneLabel { color: var(--muted); }
 
+  /* ---- Reminders screen ---- */
+  .secondary-btn {
+    padding: 12px 28px; font-size: 1rem; font-weight: 600; letter-spacing: .2px;
+    border: 1.5px solid var(--border); border-radius: 14px; cursor: pointer;
+    background: var(--card); color: var(--text);
+    transition: border-color .15s, background .15s;
+  }
+  .secondary-btn:active { border-color: var(--accent); background: var(--card-active); }
+
+  #reminders {
+    display: none; flex-direction: column; align-items: center;
+    height: 100%; gap: 16px; padding: 28px 24px; overflow-y: auto;
+    background:
+      radial-gradient(60% 40% at 50% 0%, rgba(59, 130, 246, .10), transparent 70%),
+      var(--bg);
+  }
+  #reminders h1 { font-size: 1.5rem; font-weight: 800; }
+  #reminders .sub { color: var(--muted); font-size: .85rem; max-width: 420px; text-align: center; line-height: 1.5; }
+  #dayList { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 420px; }
+  .day-row {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--card); border: 1.5px solid var(--border); border-radius: 14px;
+    padding: 12px 16px; transition: border-color .15s;
+  }
+  .day-row.on { border-color: var(--accent); }
+  .day-row .day-name { flex: 1; font-weight: 600; font-size: .95rem; text-align: left; }
+  .day-row input[type="time"] {
+    background: var(--card-active); color: var(--text); border: 1.5px solid var(--border);
+    border-radius: 10px; padding: 8px 10px; font-size: 1rem; font-family: inherit;
+    color-scheme: dark;
+  }
+  .day-row.on input[type="time"] { border-color: var(--accent); }
+  .day-row input[type="time"]:disabled { opacity: .35; }
+  /* toggle switch */
+  .switch { position: relative; width: 48px; height: 28px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch .track {
+    position: absolute; inset: 0; border-radius: 999px; background: var(--card-active);
+    border: 1.5px solid var(--border); cursor: pointer; transition: background .15s, border-color .15s;
+  }
+  .switch .track::before {
+    content: ""; position: absolute; width: 20px; height: 20px; border-radius: 50%;
+    left: 3px; top: 2.5px; background: var(--muted); transition: transform .15s, background .15s;
+  }
+  .switch input:checked + .track { background: var(--accent-soft); border-color: var(--accent); }
+  .switch input:checked + .track::before { transform: translateX(19px); background: var(--accent); }
+
+  #reminderStatus { font-size: .85rem; color: var(--muted); min-height: 1.3em; max-width: 420px; text-align: center; }
+  #reminderStatus.ok { color: #93C5FD; }
+  .reminder-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 420px; }
+
   #loading {
     position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
     background: rgba(18, 18, 18, .92); z-index: 10; font-size: 1.1rem; color: var(--muted);
@@ -187,6 +238,21 @@
       </div>
     </div>
     <button id="startBtn" class="primary-btn">Start Workout</button>
+    <button id="remindersBtn" class="secondary-btn">⏰ Reminders</button>
+  </div>
+
+  <!-- Reminders -->
+  <div id="reminders">
+    <h1>⏰ Workout Reminders</h1>
+    <p class="sub">Pick your training days and set a time for each one.</p>
+    <div id="dayList"></div>
+    <div id="reminderStatus"></div>
+    <div class="reminder-actions">
+      <button id="enableNotifsBtn" class="primary-btn" style="width:100%">Enable Notifications</button>
+      <button id="calendarBtn" class="secondary-btn" style="width:100%">📅 Add to Calendar (.ics)</button>
+      <button id="backBtn" class="secondary-btn" style="width:100%">← Back</button>
+    </div>
+    <p class="sub">Browser notifications fire while the app is open in your browser. For reminders that always arrive, use “Add to Calendar” — your phone’s calendar will notify you.</p>
   </div>
 
   <!-- Workout -->
@@ -662,6 +728,162 @@ document.getElementById("againBtn").onclick = () => {
   doneEl.style.display = "none";
   setupEl.style.display = "flex";
 };
+
+// ---------- Reminders ----------
+const remindersEl = document.getElementById("reminders");
+const dayList = document.getElementById("dayList");
+const reminderStatus = document.getElementById("reminderStatus");
+const enableNotifsBtn = document.getElementById("enableNotifsBtn");
+
+const DAYS = [
+  { key: "mon", label: "Monday",    jsDay: 1, ics: "MO" },
+  { key: "tue", label: "Tuesday",   jsDay: 2, ics: "TU" },
+  { key: "wed", label: "Wednesday", jsDay: 3, ics: "WE" },
+  { key: "thu", label: "Thursday",  jsDay: 4, ics: "TH" },
+  { key: "fri", label: "Friday",    jsDay: 5, ics: "FR" },
+  { key: "sat", label: "Saturday",  jsDay: 6, ics: "SA" },
+  { key: "sun", label: "Sunday",    jsDay: 0, ics: "SU" }
+];
+
+function loadReminders() {
+  try {
+    return JSON.parse(localStorage.getItem("workout-reminders")) || {};
+  } catch { return {}; }
+}
+function saveReminders(r) {
+  localStorage.setItem("workout-reminders", JSON.stringify(r));
+}
+let reminders = loadReminders();
+
+// Build one row per weekday: toggle + name + time picker
+for (const d of DAYS) {
+  const saved = reminders[d.key] || { on: false, time: "19:00" };
+  const row = document.createElement("div");
+  row.className = "day-row" + (saved.on ? " on" : "");
+  row.innerHTML =
+    '<label class="switch"><input type="checkbox"' + (saved.on ? " checked" : "") + '><span class="track"></span></label>' +
+    '<span class="day-name">' + d.label + '</span>' +
+    '<input type="time" value="' + saved.time + '"' + (saved.on ? "" : " disabled") + '>';
+  const toggle = row.querySelector('input[type="checkbox"]');
+  const time = row.querySelector('input[type="time"]');
+  function update() {
+    row.classList.toggle("on", toggle.checked);
+    time.disabled = !toggle.checked;
+    reminders[d.key] = { on: toggle.checked, time: time.value || "19:00" };
+    saveReminders(reminders);
+    updateReminderStatus();
+  }
+  toggle.onchange = update;
+  time.onchange = update;
+  dayList.appendChild(row);
+}
+
+function activeReminders() {
+  return DAYS.filter(d => reminders[d.key]?.on);
+}
+
+function updateReminderStatus() {
+  const act = activeReminders();
+  if (act.length === 0) {
+    reminderStatus.textContent = "No reminders set";
+    reminderStatus.className = "";
+  } else {
+    reminderStatus.textContent = "Active: " + act.map(d => d.label.slice(0, 3) + " " + reminders[d.key].time).join(", ");
+    reminderStatus.className = "ok";
+  }
+  if ("Notification" in window && Notification.permission === "granted") {
+    enableNotifsBtn.textContent = "✓ Notifications Enabled";
+  }
+}
+
+enableNotifsBtn.onclick = async () => {
+  if (!("Notification" in window)) {
+    reminderStatus.textContent = "This browser does not support notifications — use Add to Calendar instead";
+    reminderStatus.className = "";
+    return;
+  }
+  const perm = await Notification.requestPermission();
+  if (perm === "granted") {
+    new Notification("Home Workout Counter", { body: "Notifications are on. Time to get strong! 💪" });
+  } else {
+    reminderStatus.textContent = "Notifications blocked — allow them in browser settings, or use Add to Calendar";
+    reminderStatus.className = "";
+  }
+  updateReminderStatus();
+};
+
+// Fire in-app notifications while the page is open: check once per 20 s
+let lastFiredKey = null;
+setInterval(() => {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const now = new Date();
+  const hhmm = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
+  const day = DAYS.find(d => d.jsDay === now.getDay());
+  const r = reminders[day.key];
+  const fireKey = day.key + " " + hhmm;
+  if (r?.on && r.time === hhmm && lastFiredKey !== fireKey) {
+    lastFiredKey = fireKey;
+    new Notification("Time to work out! 💪", { body: "Your scheduled training session is now. Let's go!" });
+    ensureAudio();
+    goalFanfare();
+  }
+}, 20000);
+
+// Calendar export: one weekly recurring event per selected day, with an alarm
+document.getElementById("calendarBtn").onclick = () => {
+  const act = activeReminders();
+  if (act.length === 0) {
+    reminderStatus.textContent = "Turn on at least one day first";
+    reminderStatus.className = "";
+    return;
+  }
+  const pad = n => String(n).padStart(2, "0");
+  const stamp = new Date();
+  const dtstamp = stamp.getUTCFullYear() + pad(stamp.getUTCMonth() + 1) + pad(stamp.getUTCDate())
+    + "T" + pad(stamp.getUTCHours()) + pad(stamp.getUTCMinutes()) + "00Z";
+  let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Home Workout Counter//EN\r\n";
+  for (const d of act) {
+    const [h, m] = reminders[d.key].time.split(":").map(Number);
+    // First occurrence: the next date matching this weekday
+    const start = new Date();
+    start.setHours(h, m, 0, 0);
+    let diff = (d.jsDay - start.getDay() + 7) % 7;
+    if (diff === 0 && start <= new Date()) diff = 7;
+    start.setDate(start.getDate() + diff);
+    const dt = start.getFullYear() + pad(start.getMonth() + 1) + pad(start.getDate())
+      + "T" + pad(h) + pad(m) + "00";
+    ics += "BEGIN:VEVENT\r\n"
+      + "UID:workout-" + d.key + "@home-workout-counter\r\n"
+      + "DTSTAMP:" + dtstamp + "\r\n"
+      + "DTSTART:" + dt + "\r\n"
+      + "DURATION:PT30M\r\n"
+      + "RRULE:FREQ=WEEKLY;BYDAY=" + d.ics + "\r\n"
+      + "SUMMARY:🏋️ Workout time!\r\n"
+      + "DESCRIPTION:Scheduled training reminder from Home Workout Counter\r\n"
+      + "BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Workout time!\r\nTRIGGER:PT0S\r\nEND:VALARM\r\n"
+      + "END:VEVENT\r\n";
+  }
+  ics += "END:VCALENDAR\r\n";
+  const blob = new Blob([ics], { type: "text/calendar" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "workout-reminders.ics";
+  a.click();
+  URL.revokeObjectURL(a.href);
+  reminderStatus.textContent = "Calendar file downloaded — open it to add the reminders";
+  reminderStatus.className = "ok";
+};
+
+document.getElementById("remindersBtn").onclick = () => {
+  setupEl.style.display = "none";
+  remindersEl.style.display = "flex";
+  updateReminderStatus();
+};
+document.getElementById("backBtn").onclick = () => {
+  remindersEl.style.display = "none";
+  setupEl.style.display = "flex";
+};
+updateReminderStatus();
 </script>
 </body>
 </html>
