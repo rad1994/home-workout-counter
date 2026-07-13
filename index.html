@@ -331,6 +331,15 @@ let phase = "up";
 let lostFrames = 0;
 let stream = null;
 
+// Counting starts only after the user holds the starting ("up") position for a moment,
+// and each phase change must persist for a few frames to filter out detection flicker.
+const READY_FRAMES = 25;   // ~1 s in the start position before counting begins
+const STABLE_FRAMES = 4;   // consecutive frames required to accept a phase change
+let ready = false;
+let readyFrames = 0;
+let candState = null;
+let candFrames = 0;
+
 async function loadModel() {
   if (landmarker) return;
   const vision = await FilesetResolver.forVisionTasks(
@@ -402,17 +411,48 @@ function loop() {
       const state = ex.classify(lm);
       if (state === null) {
         hint.textContent = ex.trackHint;
+        readyFrames = 0;
+        candState = null;
+        candFrames = 0;
+      } else if (!ready) {
+        // Wait until the user holds the starting position before counting anything
+        if (state === "up") {
+          readyFrames++;
+          if (readyFrames >= READY_FRAMES) {
+            ready = true;
+            phase = "up";
+            hint.textContent = "";
+            stateBadge.textContent = "GO!";
+            stateBadge.className = "up";
+            repBeep();
+            speak("Ready. Go!");
+          } else {
+            hint.textContent = "Hold the starting position…";
+          }
+        } else {
+          readyFrames = 0;
+          hint.textContent = "Get into the starting position";
+        }
       } else {
         hint.textContent = "";
-        if (phase === "up" && state === "down") {
-          phase = "down";
-          stateBadge.textContent = "DOWN";
-          stateBadge.className = "down";
-        } else if (phase === "down" && state === "up") {
-          phase = "up";
-          stateBadge.textContent = "UP";
-          stateBadge.className = "up";
-          onRep();
+        // Debounce: a new state must persist for STABLE_FRAMES consecutive frames
+        if (state === candState) {
+          candFrames++;
+        } else {
+          candState = state;
+          candFrames = 1;
+        }
+        if (candFrames >= STABLE_FRAMES && candState !== phase) {
+          if (phase === "up" && candState === "down") {
+            phase = "down";
+            stateBadge.textContent = "DOWN";
+            stateBadge.className = "down";
+          } else if (phase === "down" && candState === "up") {
+            phase = "up";
+            stateBadge.textContent = "UP";
+            stateBadge.className = "up";
+            onRep();
+          }
         }
       }
     } else {
@@ -422,6 +462,11 @@ function loop() {
         hint.textContent = "No person detected — step into view";
         stateBadge.textContent = "Get in position";
         stateBadge.className = "";
+        // Person left the frame — require the start position again before counting resumes
+        ready = false;
+        readyFrames = 0;
+        candState = null;
+        candFrames = 0;
       }
     }
   }
@@ -437,6 +482,10 @@ async function startWorkout() {
   loadingEl.style.display = "flex";
   reps = 0;
   phase = "up";
+  ready = false;
+  readyFrames = 0;
+  candState = null;
+  candFrames = 0;
   repDisplay.textContent = "0";
   goalDisplay.textContent = "/ " + goal;
   exerciseLabel.textContent = ex.name;
@@ -456,7 +505,7 @@ async function startWorkout() {
     await loadModel();
     loadingEl.style.display = "none";
     running = true;
-    speak("Get ready. " + goal + " " + ex.name + ". Go!");
+    speak(goal + " " + ex.name + ". Get into the starting position.");
     requestAnimationFrame(loop);
   } catch (err) {
     loadingEl.style.display = "none";
