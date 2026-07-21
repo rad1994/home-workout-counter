@@ -318,8 +318,8 @@
     <div>
       <div class="section-label">Counting</div>
       <div class="segmented" id="countDir">
-        <button data-dir="up" class="active">0 → 10</button>
-        <button data-dir="down">10 → 0</button>
+        <button data-dir="up" class="active">↑ 0–10</button>
+        <button data-dir="down">↓ 10–0</button>
       </div>
     </div>
     <div class="picker-row">
@@ -657,7 +657,7 @@ let countDown = localStorage.getItem("workout-countdir") === "down";
 const dirButtons = document.querySelectorAll("#countDir button");
 function updateDirLabels() {
   dirButtons.forEach(b => {
-    b.textContent = b.dataset.dir === "up" ? "0 → " + goal : goal + " → 0";
+    b.textContent = b.dataset.dir === "up" ? "↑ 0–" + goal : "↓ " + goal + "–0";
     b.classList.toggle("active", (b.dataset.dir === "down") === countDown);
   });
 }
