@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#121212">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="images/app-icon-192.png">
 <title>Home Workout Counter</title>
 <style>
   :root {
@@ -1290,6 +1292,10 @@ document.getElementById("soundBackBtn").onclick = () => {
   soundEl.style.display = "none";
   setupEl.style.display = "flex";
 };
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
+}
 </script>
 </body>
 </html>
