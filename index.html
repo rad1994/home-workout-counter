@@ -223,6 +223,64 @@
   .hist-repeat { padding: 7px 14px; font-size: .8rem; flex-shrink: 0; }
   .hist-empty { color: var(--muted); font-size: .9rem; text-align: center; line-height: 1.5; max-width: 340px; }
 
+  #circuitsScreen, #circuitBuilder {
+    display: none; flex-direction: column; align-items: center;
+    height: 100%; gap: 16px; padding: 28px 24px; overflow-y: auto;
+    background:
+      radial-gradient(60% 40% at 50% 0%, rgba(59, 130, 246, .10), transparent 70%),
+      var(--bg);
+  }
+  #circuitsScreen > *, #circuitBuilder > * { flex-shrink: 0; }
+  #circuitsScreen h1, #circuitBuilder h1 { font-size: 1.5rem; font-weight: 800; }
+  #circuitsScreen .sub { color: var(--muted); font-size: .85rem; max-width: 440px; text-align: center; line-height: 1.5; }
+  #circuitList { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 440px; }
+  .circuit-card {
+    background: var(--card); border: 1.5px solid var(--border); border-radius: 14px;
+    padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; text-align: left;
+  }
+  .circuit-card .c-name { font-weight: 800; font-size: 1.05rem; }
+  .circuit-card .c-steps { color: var(--muted); font-size: .82rem; line-height: 1.5; }
+  .circuit-card .c-actions { display: flex; flex-direction: column; gap: 8px; }
+  .circuit-card .c-actions .c-start { width: 100%; padding: 12px; }
+  .circuit-card .c-row2 { display: flex; gap: 8px; }
+  .circuit-card .c-row2 button { flex: 1; min-width: 0; padding: 10px; }
+  .circuit-empty { color: var(--muted); font-size: .9rem; text-align: center; line-height: 1.5; max-width: 340px; }
+
+  #builderName {
+    width: 100%; max-width: 440px; background: var(--card); color: var(--text);
+    border: 1.5px solid var(--border); border-radius: 12px; padding: 12px 14px;
+    font-size: 1rem; font-family: inherit;
+  }
+  #builderName:focus { outline: none; border-color: var(--accent); }
+  #builderSteps { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 440px; }
+  .step-row {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--card); border: 1.5px solid var(--border); border-radius: 12px; padding: 8px 10px;
+  }
+  .step-row .s-order { display: flex; flex-direction: column; gap: 2px; }
+  .step-row .s-order button {
+    width: 26px; height: 20px; border: none; border-radius: 6px; cursor: pointer;
+    background: var(--card-active); color: var(--accent); font-size: .7rem; line-height: 1; padding: 0;
+  }
+  .step-row .s-order button:disabled { opacity: .3; cursor: default; }
+  .step-row select {
+    flex: 1; min-width: 0; background: var(--card-active); color: var(--text);
+    border: 1.5px solid var(--border); border-radius: 10px; padding: 9px 8px;
+    font-size: .92rem; font-family: inherit; color-scheme: dark;
+  }
+  .step-row input[type="number"] {
+    width: 58px; background: var(--card-active); color: var(--text); text-align: center;
+    border: 1.5px solid var(--border); border-radius: 10px; padding: 9px 4px;
+    font-size: .95rem; font-family: inherit; appearance: textfield; -moz-appearance: textfield;
+  }
+  .step-row input[type="number"]::-webkit-inner-spin-button,
+  .step-row input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .step-row .s-del {
+    width: 32px; height: 32px; flex-shrink: 0; border: none; border-radius: 8px; cursor: pointer;
+    background: transparent; color: var(--danger); font-size: 1.2rem; line-height: 1; padding: 0;
+  }
+  #builderError { color: var(--danger); font-size: .85rem; min-height: 1.1em; text-align: center; max-width: 440px; }
+
   #confirmStop {
     position: fixed; inset: 0; z-index: 40; display: none;
     align-items: center; justify-content: center; padding: 24px;
@@ -387,9 +445,39 @@
     </div>
     <button id="startBtn" class="primary-btn">Start Workout</button>
     <div class="btn-row">
+      <button id="circuitsBtn" class="secondary-btn">🔁 Circuits</button>
       <button id="soundBtn" class="secondary-btn">🔊 Sound</button>
       <button id="historyBtn" class="secondary-btn">📊 History</button>
     </div>
+  </div>
+
+  <!-- Circuits: saved templates -->
+  <div id="circuitsScreen">
+    <h1>🔁 Circuits</h1>
+    <p class="sub">Chain several exercises into one custom session, with a rest between each.</p>
+    <div id="circuitList"></div>
+    <button id="newCircuitBtn" class="primary-btn" style="width:100%; max-width:440px;">＋ New Circuit</button>
+    <button id="circuitsBackBtn" class="secondary-btn" style="width:100%; max-width:440px;">Back</button>
+  </div>
+
+  <!-- Circuit builder -->
+  <div id="circuitBuilder">
+    <h1 id="builderTitle">New Circuit</h1>
+    <input id="builderName" type="text" maxlength="30" placeholder="Circuit name (e.g. Morning Blast)">
+    <div class="section-label" style="align-self:flex-start; max-width:440px; width:100%;">Exercises (in order)</div>
+    <div id="builderSteps"></div>
+    <button id="addStepBtn" class="secondary-btn" style="width:100%; max-width:440px;">＋ Add exercise</button>
+    <div>
+      <div class="section-label">Rest between exercises</div>
+      <div class="goal-picker mini">
+        <button id="builderRestMinus">−</button>
+        <div id="builderRestValue">30s</div>
+        <button id="builderRestPlus">+</button>
+      </div>
+    </div>
+    <div id="builderError"></div>
+    <button id="saveCircuitBtn" class="primary-btn" style="width:100%; max-width:440px;">Save Circuit</button>
+    <button id="builderBackBtn" class="secondary-btn" style="width:100%; max-width:440px;">Cancel</button>
   </div>
 
   <!-- Exercise guide -->
@@ -851,6 +939,11 @@ let resting = false;
 let restInterval = null;
 let restRemaining = 0;
 
+// Circuit state: when set, the session steps through circuit.steps instead of using sets/rest.
+// circuit = { name, rest, steps: [{ ex, goal }] }
+let circuit = null;
+let circuitStep = 0;
+
 async function loadModel() {
   if (landmarker) return;
   const vision = await FilesetResolver.forVisionTasks(
@@ -900,6 +993,24 @@ function drawSkeleton(lm) {
 function onRep() {
   reps++;
   updateRepDisplay();
+  if (circuit) {
+    if (reps === goal && circuitStep < circuit.steps.length - 1) {
+      // Exercise done, more to come — rest, then advance to the next exercise
+      goalFanfare();
+      speak(EXERCISES[currentExercise].name + " done. Rest.");
+      startRest();
+    } else if (reps === goal) {
+      // Last exercise's goal reached — celebrate, keep counting until Stop
+      goalFanfare();
+      speak("Circuit complete! Great work. Keep going or press stop.");
+      repDisplay.style.color = "#3B82F6";
+      repDisplay.style.textShadow = "0 0 24px rgba(59, 130, 246, .5)";
+    } else {
+      repBeep();
+      speak(String(countDown && reps < goal ? goal - reps : reps));
+    }
+    return;
+  }
   if (reps === goal && currentSet < totalSets) {
     // Set finished, more sets to go — rest break
     goalFanfare();
@@ -925,10 +1036,13 @@ const restNext = document.getElementById("restNext");
 
 function startRest() {
   resting = true;
-  restRemaining = restSec;
+  restRemaining = circuit ? circuit.rest : restSec;
   restTimer.textContent = restRemaining;
-  restNext.textContent = "Next: Set " + (currentSet + 1) + " of " + totalSets;
+  restNext.textContent = circuit
+    ? "Next: " + EXERCISES[circuit.steps[circuitStep + 1].ex].name
+    : "Next: Set " + (currentSet + 1) + " of " + totalSets;
   restEl.style.display = "flex";
+  if (circuit && restRemaining <= 0) { endRest(); return; }
   restInterval = setInterval(() => {
     restRemaining--;
     restTimer.textContent = Math.max(0, restRemaining);
@@ -942,6 +1056,30 @@ function endRest() {
   restInterval = null;
   restEl.style.display = "none";
   resting = false;
+  if (circuit) {
+    // Save the exercise we just finished, then move to the next one
+    saveWorkoutRecord(reps, { ex: currentExercise, goal: goal, sets: 1, gps: goal, ps: 1 });
+    totalRepsDone += reps;
+    circuitStep++;
+    const step = circuit.steps[circuitStep];
+    currentExercise = step.ex;
+    goal = step.goal;
+    reps = 0;
+    phase = "up";
+    ready = false;
+    readyFrames = 0;
+    candState = null;
+    candFrames = 0;
+    updateRepDisplay();
+    repDisplay.style.color = "";
+    repDisplay.style.textShadow = "";
+    goalDisplay.textContent = countDown ? "to go / " + goal : "/ " + goal;
+    updateSetLabel();
+    stateBadge.textContent = "Get in position";
+    stateBadge.className = "";
+    speak("Next: " + EXERCISES[currentExercise].name + ". Get into the starting position.");
+    return;
+  }
   currentSet++;
   totalRepsDone += reps;
   reps = 0;
@@ -960,8 +1098,13 @@ function endRest() {
 document.getElementById("skipRestBtn").onclick = () => { if (resting) endRest(); };
 
 function updateSetLabel() {
-  exerciseLabel.textContent = EXERCISES[currentExercise].name
-    + (totalSets > 1 ? " · Set " + currentSet + "/" + totalSets : "");
+  if (circuit) {
+    exerciseLabel.textContent = EXERCISES[currentExercise].name
+      + " · " + (circuitStep + 1) + "/" + circuit.steps.length;
+  } else {
+    exerciseLabel.textContent = EXERCISES[currentExercise].name
+      + (totalSets > 1 ? " · Set " + currentSet + "/" + totalSets : "");
+  }
 }
 
 function updateRepDisplay() {
@@ -1072,6 +1215,7 @@ async function startWorkout() {
   candState = null;
   candFrames = 0;
   currentSet = 1;
+  circuitStep = 0;
   totalRepsDone = 0;
   resting = false;
   restEl.style.display = "none";
@@ -1096,7 +1240,11 @@ async function startWorkout() {
     await loadModel();
     loadingEl.style.display = "none";
     running = true;
-    speak((totalSets > 1 ? totalSets + " sets of " : "") + goal + " " + ex.name + ". Get into the starting position.");
+    if (circuit) {
+      speak("Circuit " + circuit.name + ". First: " + goal + " " + ex.name + ". Get into the starting position.");
+    } else {
+      speak((totalSets > 1 ? totalSets + " sets of " : "") + goal + " " + ex.name + ". Get into the starting position.");
+    }
     requestAnimationFrame(loop);
   } catch (err) {
     loadingEl.style.display = "none";
@@ -1121,14 +1269,26 @@ function stopWorkout(showDone) {
   restEl.style.display = "none";
   workoutEl.style.display = "none";
   if (showDone) {
-    const total = totalRepsDone + reps;
-    const target = goal * totalSets;
-    doneTitle.textContent = total >= target ? "🎉 Goal reached!" : "Workout finished";
-    finalCount.textContent = total;
-    doneLabel.textContent = EXERCISES[currentExercise].name + " completed"
-      + (totalSets > 1 ? " · " + Math.min(currentSet, totalSets) + "/" + totalSets + " sets" : "")
-      + (total > target ? " (goal was " + target + ")" : "");
-    saveWorkoutRecord(total);
+    if (circuit) {
+      // Save the exercise in progress, then summarize the whole circuit
+      saveWorkoutRecord(reps, { ex: currentExercise, goal: goal, sets: 1, gps: goal, ps: 1 });
+      const total = totalRepsDone + reps;
+      const finished = circuitStep >= circuit.steps.length - 1 && reps >= goal;
+      doneTitle.textContent = finished ? "🎉 Circuit complete!" : "Circuit stopped";
+      finalCount.textContent = total;
+      doneLabel.textContent = circuit.name + " · "
+        + (finished ? circuit.steps.length : circuitStep + 1) + "/" + circuit.steps.length
+        + " exercises · " + total + " reps";
+    } else {
+      const total = totalRepsDone + reps;
+      const target = goal * totalSets;
+      doneTitle.textContent = total >= target ? "🎉 Goal reached!" : "Workout finished";
+      finalCount.textContent = total;
+      doneLabel.textContent = EXERCISES[currentExercise].name + " completed"
+        + (totalSets > 1 ? " · " + Math.min(currentSet, totalSets) + "/" + totalSets + " sets" : "")
+        + (total > target ? " (goal was " + target + ")" : "");
+      saveWorkoutRecord(total);
+    }
     doneEl.style.display = "flex";
     pushScreen("done");
   } else {
@@ -1136,7 +1296,7 @@ function stopWorkout(showDone) {
   }
 }
 
-document.getElementById("startBtn").onclick = startWorkout;
+document.getElementById("startBtn").onclick = () => { circuit = null; startWorkout(); };
 document.getElementById("stopBtn").onclick = () => { skipStopConfirm = true; history.back(); };
 document.getElementById("againBtn").onclick = () => history.back();
 
@@ -1210,13 +1370,18 @@ let histEx = currentExercise;
 function loadHistory() {
   try { return JSON.parse(localStorage.getItem(HIST_KEY)) || []; } catch { return []; }
 }
-function saveWorkoutRecord(total) {
+function saveWorkoutRecord(total, opts) {
+  opts = opts || {};
   const list = loadHistory();
   list.push({
-    t: Date.now(), ex: currentExercise, reps: total, goal: goal * totalSets,
-    sets: Math.min(currentSet, totalSets),
+    t: Date.now(),
+    ex: opts.ex || currentExercise,
+    reps: total,
+    goal: opts.goal != null ? opts.goal : goal * totalSets,
+    sets: opts.sets != null ? opts.sets : Math.min(currentSet, totalSets),
     // planned config, so the session can be repeated exactly
-    gps: goal, ps: totalSets
+    gps: opts.gps != null ? opts.gps : goal,
+    ps: opts.ps != null ? opts.ps : totalSets
   });
   if (list.length > 500) list.splice(0, list.length - 500);
   localStorage.setItem(HIST_KEY, JSON.stringify(list));
@@ -1339,6 +1504,146 @@ document.getElementById("historyBtn").onclick = () => {
 };
 document.getElementById("histBackBtn").onclick = () => history.back();
 
+// ---------- Circuits (custom exercise sequences) ----------
+const CIRC_KEY = "workout-circuits";
+const circuitsEl = document.getElementById("circuitsScreen");
+const builderEl = document.getElementById("circuitBuilder");
+const escapeHtml = (s) => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtSecs = (s) => s === 0 ? "None" : s < 60 ? s + "s" : Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+
+function loadCircuits() {
+  try { return JSON.parse(localStorage.getItem(CIRC_KEY)) || []; } catch { return []; }
+}
+function saveCircuits(list) {
+  localStorage.setItem(CIRC_KEY, JSON.stringify(list));
+}
+
+function renderCircuits() {
+  const list = loadCircuits();
+  const box = document.getElementById("circuitList");
+  if (!list.length) {
+    box.innerHTML = '<p class="circuit-empty">No circuits yet.<br>Tap “New Circuit” to chain exercises into one custom session.</p>';
+    return;
+  }
+  box.innerHTML = "";
+  list.forEach(c => {
+    const card = document.createElement("div");
+    card.className = "circuit-card";
+    const steps = c.steps.map(s => EXERCISES[s.ex].name + " " + s.goal).join(" · ");
+    const restTxt = c.rest === 0 ? "no rest" : fmtSecs(c.rest) + " rest";
+    card.innerHTML = '<div class="c-name">' + escapeHtml(c.name) + '</div>' +
+      '<div class="c-steps">' + steps + '<br>' + c.steps.length + ' exercises · ' + restTxt + '</div>' +
+      '<div class="c-actions">' +
+        '<button class="primary-btn c-start">▶ Start</button>' +
+        '<div class="c-row2">' +
+          '<button class="secondary-btn c-edit">Edit</button>' +
+          '<button class="secondary-btn c-del">Delete</button>' +
+        '</div>' +
+      '</div>';
+    card.querySelector(".c-start").onclick = () => startCircuit(c);
+    card.querySelector(".c-edit").onclick = () => openBuilder(c);
+    card.querySelector(".c-del").onclick = () => {
+      if (confirm("Delete “" + c.name + "”?")) { saveCircuits(loadCircuits().filter(x => x.id !== c.id)); renderCircuits(); }
+    };
+    box.appendChild(card);
+  });
+}
+
+function startCircuit(tpl) {
+  circuit = { name: tpl.name, rest: tpl.rest, steps: tpl.steps.map(s => ({ ex: s.ex, goal: s.goal })) };
+  circuitStep = 0;
+  currentExercise = circuit.steps[0].ex;
+  goal = circuit.steps[0].goal;
+  totalSets = 1;
+  circuitsEl.style.display = "none";
+  startWorkout();
+}
+
+// --- Builder ---
+let builderSteps = [];
+let builderRest = 30;
+let editingId = null;
+
+function renderBuilderSteps() {
+  const box = document.getElementById("builderSteps");
+  box.innerHTML = "";
+  builderSteps.forEach((s, i) => {
+    const row = document.createElement("div");
+    row.className = "step-row";
+    const opts = Object.keys(EXERCISES)
+      .map(k => '<option value="' + k + '"' + (k === s.ex ? " selected" : "") + '>' + EXERCISES[k].name + '</option>').join("");
+    row.innerHTML =
+      '<div class="s-order">' +
+        '<button class="s-up"' + (i === 0 ? " disabled" : "") + '>▲</button>' +
+        '<button class="s-down"' + (i === builderSteps.length - 1 ? " disabled" : "") + '>▼</button>' +
+      '</div>' +
+      '<select class="s-ex">' + opts + '</select>' +
+      '<input class="s-goal" type="number" inputmode="numeric" min="1" max="200" value="' + s.goal + '">' +
+      '<button class="s-del" aria-label="Remove">✕</button>';
+    row.querySelector(".s-ex").onchange = (e) => { builderSteps[i].ex = e.target.value; };
+    const gi = row.querySelector(".s-goal");
+    gi.oninput = (e) => { const v = parseInt(e.target.value); if (v >= 1 && v <= 200) builderSteps[i].goal = v; };
+    gi.onchange = (e) => { builderSteps[i].goal = Math.min(200, Math.max(1, parseInt(e.target.value) || 1)); e.target.value = builderSteps[i].goal; };
+    row.querySelector(".s-up").onclick = () => { [builderSteps[i - 1], builderSteps[i]] = [builderSteps[i], builderSteps[i - 1]]; renderBuilderSteps(); };
+    row.querySelector(".s-down").onclick = () => { [builderSteps[i + 1], builderSteps[i]] = [builderSteps[i], builderSteps[i + 1]]; renderBuilderSteps(); };
+    row.querySelector(".s-del").onclick = () => { builderSteps.splice(i, 1); renderBuilderSteps(); };
+    box.appendChild(row);
+  });
+}
+
+function updateBuilderRest() {
+  document.getElementById("builderRestValue").textContent = fmtSecs(builderRest);
+}
+
+function openBuilder(tpl) {
+  editingId = tpl ? tpl.id : null;
+  document.getElementById("builderTitle").textContent = tpl ? "Edit Circuit" : "New Circuit";
+  document.getElementById("builderName").value = tpl ? tpl.name : "";
+  builderSteps = tpl ? tpl.steps.map(s => ({ ex: s.ex, goal: s.goal })) : [{ ex: "pushup", goal: 10 }, { ex: "squat", goal: 10 }];
+  builderRest = tpl ? tpl.rest : 30;
+  document.getElementById("builderError").textContent = "";
+  renderBuilderSteps();
+  updateBuilderRest();
+  circuitsEl.style.display = "none";
+  builderEl.style.display = "flex";
+  pushScreen("builder");
+}
+
+document.getElementById("addStepBtn").onclick = () => {
+  if (builderSteps.length >= 12) return;
+  const last = builderSteps[builderSteps.length - 1];
+  builderSteps.push({ ex: last ? last.ex : "pushup", goal: last ? last.goal : 10 });
+  renderBuilderSteps();
+};
+document.getElementById("builderRestMinus").onclick = () => { builderRest = Math.max(0, builderRest - 15); updateBuilderRest(); };
+document.getElementById("builderRestPlus").onclick = () => { builderRest = Math.min(300, builderRest + 15); updateBuilderRest(); };
+
+document.getElementById("saveCircuitBtn").onclick = () => {
+  const name = document.getElementById("builderName").value.trim();
+  const err = document.getElementById("builderError");
+  if (!name) { err.textContent = "Give your circuit a name."; return; }
+  if (builderSteps.length < 2) { err.textContent = "Add at least 2 exercises."; return; }
+  const list = loadCircuits();
+  if (editingId) {
+    const c = list.find(x => x.id === editingId);
+    if (c) { c.name = name; c.rest = builderRest; c.steps = builderSteps.map(s => ({ ex: s.ex, goal: s.goal })); }
+  } else {
+    list.push({ id: "c" + Date.now(), name, rest: builderRest, steps: builderSteps.map(s => ({ ex: s.ex, goal: s.goal })) });
+  }
+  saveCircuits(list);
+  history.back(); // returns to the circuits list (popstate re-renders it)
+};
+
+document.getElementById("circuitsBtn").onclick = () => {
+  setupEl.style.display = "none";
+  circuitsEl.style.display = "flex";
+  pushScreen("circuits");
+  renderCircuits();
+};
+document.getElementById("newCircuitBtn").onclick = () => openBuilder(null);
+document.getElementById("circuitsBackBtn").onclick = () => history.back();
+document.getElementById("builderBackBtn").onclick = () => history.back();
+
 // ---------- System back button (Android) ----------
 // Sub-screens push a history entry; popping it closes the screen instead of exiting the app.
 function pushScreen(name) {
@@ -1371,6 +1676,13 @@ window.addEventListener("popstate", () => {
     setupEl.style.display = "flex";
   } else if (historyEl.style.display === "flex") {
     historyEl.style.display = "none";
+    setupEl.style.display = "flex";
+  } else if (builderEl.style.display === "flex") {
+    builderEl.style.display = "none";
+    circuitsEl.style.display = "flex";
+    renderCircuits();
+  } else if (circuitsEl.style.display === "flex") {
+    circuitsEl.style.display = "none";
     setupEl.style.display = "flex";
   } else if (doneEl.style.display === "flex") {
     doneEl.style.display = "none";
