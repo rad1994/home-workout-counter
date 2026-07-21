@@ -231,6 +231,29 @@
   .switch input:checked + .track { background: var(--accent-soft); border-color: var(--accent); }
   .switch input:checked + .track::before { transform: translateX(19px); background: var(--accent); }
 
+  /* ---- Sound settings screen ---- */
+  #sound {
+    display: none; flex-direction: column; align-items: center;
+    height: 100%; gap: 18px; padding: 28px 24px; overflow-y: auto;
+    background:
+      radial-gradient(60% 40% at 50% 0%, rgba(59, 130, 246, .10), transparent 70%),
+      var(--bg);
+  }
+  #sound h1 { font-size: 1.5rem; font-weight: 800; }
+  .sound-group { width: 100%; max-width: 420px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .chip {
+    padding: 9px 18px; border-radius: 999px; border: 1.5px solid var(--border);
+    background: var(--card); color: var(--muted); font-size: .9rem; font-weight: 600;
+    font-family: inherit; cursor: pointer; transition: background .15s, color .15s, border-color .15s;
+  }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #volSlider {
+    width: 100%; max-width: 320px; accent-color: var(--accent); height: 28px; cursor: pointer;
+  }
+  #volLabel { font-size: 1.1rem; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
   #reminderStatus { font-size: .85rem; color: var(--muted); min-height: 1.3em; max-width: 420px; text-align: center; }
   #reminderStatus.ok { color: #93C5FD; }
   .reminder-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 420px; }
@@ -295,7 +318,41 @@
       </div>
     </div>
     <button id="startBtn" class="primary-btn">Start Workout</button>
-    <button id="remindersBtn" class="secondary-btn">⏰ Reminders</button>
+    <div class="btn-row">
+      <button id="remindersBtn" class="secondary-btn">⏰ Reminders</button>
+      <button id="soundBtn" class="secondary-btn">🔊 Sound</button>
+    </div>
+  </div>
+
+  <!-- Sound settings -->
+  <div id="sound">
+    <h1>🔊 Sound Settings</h1>
+    <div class="sound-group">
+      <div class="section-label">Volume</div>
+      <input type="range" id="volSlider" min="0" max="100" step="5">
+      <div id="volLabel"></div>
+    </div>
+    <div class="day-row" style="max-width:420px; width:100%;">
+      <label class="switch"><input type="checkbox" id="voiceToggle"><span class="track"></span></label>
+      <span class="day-name">Voice announcements (counting, cues)</span>
+    </div>
+    <div class="sound-group">
+      <div class="section-label">Start signal</div>
+      <div class="chips" data-event="start"></div>
+    </div>
+    <div class="sound-group">
+      <div class="section-label">Rep sound</div>
+      <div class="chips" data-event="rep"></div>
+    </div>
+    <div class="sound-group">
+      <div class="section-label">Set complete / goal</div>
+      <div class="chips" data-event="fanfare"></div>
+    </div>
+    <div class="sound-group">
+      <div class="section-label">Rest countdown</div>
+      <div class="chips" data-event="rest"></div>
+    </div>
+    <button id="soundBackBtn" class="secondary-btn" style="width:100%; max-width:420px;">← Back</button>
   </div>
 
   <!-- Reminders -->
@@ -560,35 +617,72 @@ document.getElementById("restPlus").onclick = () => { restSec = Math.min(300, re
 updateSetsRest();
 
 // ---------- Audio ----------
+// Sound settings: master volume, voice on/off, and a selectable sound per event
+const SOUND_DEFAULTS = { volume: 80, voice: true, rep: "Beep", start: "Chime", fanfare: "Fanfare", rest: "Tick" };
+let soundCfg = SOUND_DEFAULTS;
+try { soundCfg = { ...SOUND_DEFAULTS, ...(JSON.parse(localStorage.getItem("workout-sound")) || {}) }; } catch {}
+function saveSoundCfg() { localStorage.setItem("workout-sound", JSON.stringify(soundCfg)); }
+
+// Each option is a list of tones: [freq, delayS, durationS, volume, waveType]
+const SOUND_OPTIONS = {
+  rep: {
+    "Beep":  [[880, 0, 0.15, 0.45, "sine"]],
+    "Blip":  [[1318, 0, 0.07, 0.4, "sine"]],
+    "Click": [[320, 0, 0.05, 0.5, "square"]],
+    "Off":   []
+  },
+  start: {
+    "Chime":   [[660, 0, 0.12, 0.45, "sine"], [990, 0.13, 0.3, 0.45, "sine"]],
+    "Whistle": [[1480, 0, 0.4, 0.4, "triangle"]],
+    "Buzzer":  [[180, 0, 0.35, 0.5, "square"]],
+    "Off":     []
+  },
+  fanfare: {
+    "Fanfare": [[523, 0, 0.18, 0.45, "triangle"], [659, 0.18, 0.18, 0.45, "triangle"], [784, 0.36, 0.18, 0.45, "triangle"], [1047, 0.54, 0.5, 0.5, "triangle"]],
+    "Victory": [[523, 0, 0.14, 0.45, "square"], [523, 0.16, 0.14, 0.45, "square"], [659, 0.32, 0.5, 0.5, "square"]],
+    "Bell":    [[1568, 0, 0.5, 0.4, "triangle"], [1568, 0.35, 0.8, 0.35, "triangle"]],
+    "Off":     []
+  },
+  rest: {
+    "Tick": [[660, 0, 0.12, 0.4, "sine"]],
+    "Wood": [[220, 0, 0.06, 0.5, "square"]],
+    "Off":  []
+  }
+};
+
 let audioCtx = null;
 function ensureAudio() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === "suspended") audioCtx.resume();
 }
 function tone(freq, startDelay, duration, volume = 0.4, type = "sine") {
+  const vol = volume * (soundCfg.volume / 100);
+  if (vol <= 0.001) return;
   const t0 = audioCtx.currentTime + startDelay;
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   osc.type = type;
   osc.frequency.value = freq;
-  gain.gain.setValueAtTime(volume, t0);
+  gain.gain.setValueAtTime(vol, t0);
   gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
   osc.connect(gain).connect(audioCtx.destination);
   osc.start(t0);
   osc.stop(t0 + duration);
 }
-function repBeep() { tone(880, 0, 0.15); }
-function goalFanfare() {
-  tone(523, 0.00, 0.18, 0.45, "triangle"); // C5
-  tone(659, 0.18, 0.18, 0.45, "triangle"); // E5
-  tone(784, 0.36, 0.18, 0.45, "triangle"); // G5
-  tone(1047, 0.54, 0.5, 0.5, "triangle");  // C6
+function playSound(event) {
+  ensureAudio();
+  const seq = SOUND_OPTIONS[event]?.[soundCfg[event]] || [];
+  for (const [f, d, dur, v, type] of seq) tone(f, d, dur, v, type);
 }
+function repBeep() { playSound("rep"); }
+function goalFanfare() { playSound("fanfare"); }
 function speak(text) {
+  if (!soundCfg.voice) return;
   if (!("speechSynthesis" in window)) return;
   const u = new SpeechSynthesisUtterance(text);
   u.lang = "en-US";
   u.rate = 1.1;
+  u.volume = soundCfg.volume / 100;
   speechSynthesis.speak(u);
 }
 
@@ -698,7 +792,7 @@ function startRest() {
   restInterval = setInterval(() => {
     restRemaining--;
     restTimer.textContent = Math.max(0, restRemaining);
-    if (restRemaining > 0 && restRemaining <= 3) tone(660, 0, 0.12);
+    if (restRemaining > 0 && restRemaining <= 3) playSound("rest");
     if (restRemaining <= 0) endRest();
   }, 1000);
 }
@@ -769,7 +863,7 @@ function loop() {
             hint.textContent = "";
             stateBadge.textContent = "GO!";
             stateBadge.className = "up";
-            repBeep();
+            playSound("start");
             speak("Ready. Go!");
           } else {
             hint.textContent = "Hold the starting position…";
@@ -1061,6 +1155,55 @@ document.getElementById("backBtn").onclick = () => {
   setupEl.style.display = "flex";
 };
 updateReminderStatus();
+
+// ---------- Sound settings UI ----------
+const soundEl = document.getElementById("sound");
+const volSlider = document.getElementById("volSlider");
+const volLabel = document.getElementById("volLabel");
+const voiceToggle = document.getElementById("voiceToggle");
+
+volSlider.value = soundCfg.volume;
+volLabel.textContent = soundCfg.volume + "%";
+voiceToggle.checked = soundCfg.voice;
+
+volSlider.oninput = () => {
+  soundCfg.volume = Number(volSlider.value);
+  volLabel.textContent = soundCfg.volume + "%";
+  saveSoundCfg();
+};
+volSlider.onchange = () => { playSound("rep"); }; // preview at the new volume
+voiceToggle.onchange = () => {
+  soundCfg.voice = voiceToggle.checked;
+  saveSoundCfg();
+  if (soundCfg.voice) { ensureAudio(); speak("Voice is on"); }
+};
+
+// Build the option chips for each event; clicking selects and previews the sound
+document.querySelectorAll(".chips").forEach(box => {
+  const event = box.dataset.event;
+  for (const name of Object.keys(SOUND_OPTIONS[event])) {
+    const chip = document.createElement("button");
+    chip.className = "chip" + (soundCfg[event] === name ? " active" : "");
+    chip.textContent = name;
+    chip.onclick = () => {
+      soundCfg[event] = name;
+      saveSoundCfg();
+      box.querySelectorAll(".chip").forEach(c => c.classList.toggle("active", c === chip));
+      playSound(event);
+    };
+    box.appendChild(chip);
+  }
+});
+
+document.getElementById("soundBtn").onclick = () => {
+  ensureAudio();
+  setupEl.style.display = "none";
+  soundEl.style.display = "flex";
+};
+document.getElementById("soundBackBtn").onclick = () => {
+  soundEl.style.display = "none";
+  setupEl.style.display = "flex";
+};
 </script>
 </body>
 </html>
