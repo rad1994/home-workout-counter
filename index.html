@@ -996,6 +996,7 @@ async function startWorkout() {
   setupEl.style.display = "none";
   workoutEl.style.display = "block";
   loadingEl.style.display = "flex";
+  pushScreen("workout");
   reps = 0;
   phase = "up";
   ready = false;
@@ -1060,17 +1061,15 @@ function stopWorkout(showDone) {
       + (totalSets > 1 ? " · " + Math.min(currentSet, totalSets) + "/" + totalSets + " sets" : "")
       + (total > target ? " (goal was " + target + ")" : "");
     doneEl.style.display = "flex";
+    pushScreen("done");
   } else {
     setupEl.style.display = "flex";
   }
 }
 
 document.getElementById("startBtn").onclick = startWorkout;
-document.getElementById("stopBtn").onclick = () => stopWorkout(totalRepsDone + reps > 0);
-document.getElementById("againBtn").onclick = () => {
-  doneEl.style.display = "none";
-  setupEl.style.display = "flex";
-};
+document.getElementById("stopBtn").onclick = () => history.back();
+document.getElementById("againBtn").onclick = () => history.back();
 
 // ---------- Reminders ----------
 const remindersEl = document.getElementById("reminders");
@@ -1220,12 +1219,10 @@ document.getElementById("calendarBtn").onclick = () => {
 document.getElementById("remindersBtn").onclick = () => {
   setupEl.style.display = "none";
   remindersEl.style.display = "flex";
+  pushScreen("reminders");
   updateReminderStatus();
 };
-document.getElementById("backBtn").onclick = () => {
-  remindersEl.style.display = "none";
-  setupEl.style.display = "flex";
-};
+document.getElementById("backBtn").onclick = () => history.back();
 updateReminderStatus();
 
 // ---------- Sound settings UI ----------
@@ -1277,21 +1274,41 @@ document.getElementById("guideBtn").onclick = () => {
   document.getElementById("guideMistakes").innerHTML = g.mistakes.map(s => "<li>" + s + "</li>").join("");
   setupEl.style.display = "none";
   guideEl.style.display = "flex";
+  pushScreen("guide");
 };
-document.getElementById("guideBackBtn").onclick = () => {
-  guideEl.style.display = "none";
-  setupEl.style.display = "flex";
-};
+document.getElementById("guideBackBtn").onclick = () => history.back();
 
 document.getElementById("soundBtn").onclick = () => {
   ensureAudio();
   setupEl.style.display = "none";
   soundEl.style.display = "flex";
+  pushScreen("sound");
 };
-document.getElementById("soundBackBtn").onclick = () => {
-  soundEl.style.display = "none";
-  setupEl.style.display = "flex";
-};
+document.getElementById("soundBackBtn").onclick = () => history.back();
+
+// ---------- System back button (Android) ----------
+// Sub-screens push a history entry; popping it closes the screen instead of exiting the app.
+function pushScreen(name) {
+  history.pushState({ screen: name }, "");
+}
+window.addEventListener("popstate", () => {
+  if (guideEl.style.display === "flex") {
+    guideEl.style.display = "none";
+    setupEl.style.display = "flex";
+  } else if (soundEl.style.display === "flex") {
+    soundEl.style.display = "none";
+    setupEl.style.display = "flex";
+  } else if (remindersEl.style.display === "flex") {
+    remindersEl.style.display = "none";
+    setupEl.style.display = "flex";
+  } else if (doneEl.style.display === "flex") {
+    doneEl.style.display = "none";
+    setupEl.style.display = "flex";
+  } else if (workoutEl.style.display === "block") {
+    stopWorkout(totalRepsDone + reps > 0);
+  }
+  // Setup screen visible: stale entry (e.g. camera error) — ignore.
+});
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
