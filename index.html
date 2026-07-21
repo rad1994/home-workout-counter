@@ -173,6 +173,48 @@
   #stopBtn:active { transform: translateX(-50%) scale(.97); }
 
   /* ---- Done screen ---- */
+  #historyScreen {
+    display: none; flex-direction: column; align-items: center;
+    height: 100%; gap: 16px; padding: 28px 24px; overflow-y: auto;
+    background:
+      radial-gradient(60% 40% at 50% 0%, rgba(59, 130, 246, .10), transparent 70%),
+      var(--bg);
+  }
+  #historyScreen > * { flex-shrink: 0; }
+  #historyScreen h1 { font-size: 1.5rem; font-weight: 800; }
+  .stat-row { display: flex; gap: 10px; width: 100%; max-width: 440px; }
+  .stat-tile {
+    flex: 1; background: var(--card); border: 1.5px solid var(--border);
+    border-radius: 14px; padding: 12px 6px; text-align: center;
+  }
+  .stat-tile .val { font-size: 1.35rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .stat-tile .lbl {
+    color: var(--muted); font-size: .68rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1px; margin-top: 2px;
+  }
+  #histChartWrap {
+    width: 100%; max-width: 440px; position: relative;
+    background: var(--card); border: 1.5px solid var(--border);
+    border-radius: 16px; padding: 14px 12px 8px;
+  }
+  #histChart { width: 100%; height: 190px; display: block; touch-action: pan-y; }
+  #histTip {
+    position: absolute; display: none; pointer-events: none; z-index: 5;
+    background: var(--card-active); border: 1px solid var(--accent);
+    border-radius: 8px; padding: 6px 10px; font-size: .8rem; white-space: nowrap;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .4);
+  }
+  #histTip .tip-date { color: var(--muted); font-size: .72rem; }
+  #histList { width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 8px; }
+  .hist-item {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    background: var(--card); border: 1.5px solid var(--border);
+    border-radius: 12px; padding: 10px 14px; font-size: .88rem;
+  }
+  .hist-item .when { color: var(--muted); }
+  .hist-item .result { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .hist-empty { color: var(--muted); font-size: .9rem; text-align: center; line-height: 1.5; max-width: 340px; }
+
   #confirmStop {
     position: fixed; inset: 0; z-index: 40; display: none;
     align-items: center; justify-content: center; padding: 24px;
@@ -360,6 +402,7 @@
     <div class="btn-row">
       <button id="remindersBtn" class="secondary-btn">⏰ Reminders</button>
       <button id="soundBtn" class="secondary-btn">🔊 Sound</button>
+      <button id="historyBtn" class="secondary-btn">📊 History</button>
     </div>
   </div>
 
@@ -403,6 +446,24 @@
       <div class="chips" data-event="rest"></div>
     </div>
     <button id="soundBackBtn" class="secondary-btn" style="width:100%; max-width:420px;">Back</button>
+  </div>
+
+  <!-- Workout history -->
+  <div id="historyScreen">
+    <h1>📊 Workout History</h1>
+    <div class="chips" id="histTabs"></div>
+    <div class="stat-row" id="histStats">
+      <div class="stat-tile"><div class="val" id="statSessions">0</div><div class="lbl">Sessions</div></div>
+      <div class="stat-tile"><div class="val" id="statTotal">0</div><div class="lbl">Total reps</div></div>
+      <div class="stat-tile"><div class="val" id="statBest">0</div><div class="lbl">Best</div></div>
+    </div>
+    <div id="histChartWrap">
+      <div class="section-label" style="margin-bottom:6px;">Reps per session</div>
+      <svg id="histChart" role="img" aria-label="Reps per session over time"></svg>
+      <div id="histTip"></div>
+    </div>
+    <div id="histList"></div>
+    <button id="histBackBtn" class="secondary-btn" style="width:100%; max-width:440px;">Back</button>
   </div>
 
   <!-- Reminders -->
@@ -1084,6 +1145,7 @@ function stopWorkout(showDone) {
     doneLabel.textContent = EXERCISES[currentExercise].name + " completed"
       + (totalSets > 1 ? " · " + Math.min(currentSet, totalSets) + "/" + totalSets + " sets" : "")
       + (total > target ? " (goal was " + target + ")" : "");
+    saveWorkoutRecord(total);
     doneEl.style.display = "flex";
     pushScreen("done");
   } else {
@@ -1272,7 +1334,7 @@ voiceToggle.onchange = () => {
 };
 
 // Build the option chips for each event; clicking selects and previews the sound
-document.querySelectorAll(".chips").forEach(box => {
+document.querySelectorAll(".chips[data-event]").forEach(box => {
   const event = box.dataset.event;
   for (const name of Object.keys(SOUND_OPTIONS[event])) {
     const chip = document.createElement("button");
@@ -1310,6 +1372,125 @@ document.getElementById("soundBtn").onclick = () => {
 };
 document.getElementById("soundBackBtn").onclick = () => history.back();
 
+// ---------- Workout history ----------
+const HIST_KEY = "workout-history";
+const historyEl = document.getElementById("historyScreen");
+const histTip = document.getElementById("histTip");
+let histEx = currentExercise;
+
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HIST_KEY)) || []; } catch { return []; }
+}
+function saveWorkoutRecord(total) {
+  const list = loadHistory();
+  list.push({ t: Date.now(), ex: currentExercise, reps: total, goal: goal * totalSets, sets: Math.min(currentSet, totalSets) });
+  if (list.length > 500) list.splice(0, list.length - 500);
+  localStorage.setItem(HIST_KEY, JSON.stringify(list));
+}
+
+const histTabs = document.getElementById("histTabs");
+for (const key of Object.keys(EXERCISES)) {
+  const chip = document.createElement("button");
+  chip.className = "chip";
+  chip.dataset.ex = key;
+  chip.textContent = EXERCISES[key].name;
+  chip.onclick = () => { histEx = key; renderHistory(); };
+  histTabs.appendChild(chip);
+}
+
+const fmtDay = (t) => new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+const fmtFull = (t) => new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric" }) +
+  ", " + new Date(t).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+
+function renderHistory() {
+  histTabs.querySelectorAll(".chip").forEach(c => c.classList.toggle("active", c.dataset.ex === histEx));
+  const data = loadHistory().filter(r => r.ex === histEx).sort((a, b) => a.t - b.t);
+
+  document.getElementById("statSessions").textContent = data.length;
+  document.getElementById("statTotal").textContent = data.reduce((s, r) => s + r.reps, 0);
+  document.getElementById("statBest").textContent = data.length ? Math.max(...data.map(r => r.reps)) : 0;
+
+  const listEl = document.getElementById("histList");
+  if (!data.length) {
+    listEl.innerHTML = '<p class="hist-empty">No ' + EXERCISES[histEx].name +
+      ' workouts yet.<br>Finish a session and it will show up here.</p>';
+  } else {
+    listEl.innerHTML = data.slice(-10).reverse().map(r =>
+      '<div class="hist-item"><span class="when">' + fmtFull(r.t) + '</span><span class="result">' +
+      r.reps + ' reps' + (r.sets > 1 ? ' · ' + r.sets + ' sets' : '') + '</span></div>'
+    ).join("");
+  }
+  renderHistChart(data);
+}
+
+function renderHistChart(data) {
+  const svg = document.getElementById("histChart");
+  histTip.style.display = "none";
+  const W = 440, H = 190, padL = 34, padR = 16, padT = 18, padB = 24;
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  const pts = data.slice(-20);
+  if (!pts.length) {
+    svg.innerHTML = '<text x="' + (W / 2) + '" y="' + (H / 2) +
+      '" text-anchor="middle" font-size="13" fill="#9CA3AF">No data yet</text>';
+    return;
+  }
+  const niceMax = Math.max(10, Math.ceil(Math.max(...pts.map(p => p.reps)) / 10) * 10);
+  const x = (i) => pts.length === 1 ? W / 2 : padL + i * (W - padL - padR) / (pts.length - 1);
+  const y = (v) => padT + (H - padT - padB) * (1 - v / niceMax);
+  let s = "";
+  for (const v of [0, niceMax / 2, niceMax]) {
+    s += '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y(v) + '" y2="' + y(v) +
+      '" stroke="#2C2C2C" stroke-width="1"/>' +
+      '<text x="' + (padL - 7) + '" y="' + (y(v) + 3.5) + '" text-anchor="end" font-size="10" fill="#9CA3AF">' + v + '</text>';
+  }
+  const line = pts.map((p, i) => (i ? "L" : "M") + x(i).toFixed(1) + "," + y(p.reps).toFixed(1)).join(" ");
+  if (pts.length > 1) {
+    s += '<path d="' + line + " L" + x(pts.length - 1).toFixed(1) + "," + y(0) + " L" + x(0).toFixed(1) + "," + y(0) +
+      ' Z" fill="rgba(59,130,246,.12)"/>';
+    s += '<path d="' + line + '" fill="none" stroke="#3B82F6" stroke-width="2" stroke-linejoin="round"/>';
+  }
+  pts.forEach((p, i) => {
+    s += '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(p.reps).toFixed(1) +
+      '" r="4" fill="#3B82F6" stroke="#1E1E1E" stroke-width="2"/>' +
+      '<circle class="hist-hit" data-i="' + i + '" cx="' + x(i).toFixed(1) + '" cy="' + y(p.reps).toFixed(1) +
+      '" r="14" fill="transparent"/>';
+  });
+  const last = pts[pts.length - 1];
+  s += '<text x="' + x(pts.length - 1).toFixed(1) + '" y="' + (y(last.reps) - 9) +
+    '" text-anchor="' + (pts.length === 1 ? "middle" : "end") + '" font-size="11" font-weight="700" fill="#FFFFFF">' +
+    last.reps + '</text>';
+  s += '<text x="' + padL + '" y="' + (H - 7) + '" text-anchor="start" font-size="10" fill="#9CA3AF">' + fmtDay(pts[0].t) + '</text>';
+  if (pts.length > 1) {
+    s += '<text x="' + (W - padR) + '" y="' + (H - 7) + '" text-anchor="end" font-size="10" fill="#9CA3AF">' + fmtDay(last.t) + '</text>';
+  }
+  svg.innerHTML = s;
+
+  const wrap = document.getElementById("histChartWrap");
+  svg.querySelectorAll(".hist-hit").forEach(c => {
+    const p = pts[+c.dataset.i];
+    const show = () => {
+      histTip.innerHTML = '<div class="tip-date">' + fmtFull(p.t) + '</div>' + p.reps + " reps";
+      histTip.style.display = "block";
+      const cr = c.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
+      const cx = cr.left + cr.width / 2 - wr.left;
+      histTip.style.left = Math.max(4, Math.min(cx - histTip.offsetWidth / 2, wr.width - histTip.offsetWidth - 4)) + "px";
+      histTip.style.top = Math.max(2, cr.top - wr.top - histTip.offsetHeight - 10) + "px";
+    };
+    c.addEventListener("pointerenter", show);
+    c.addEventListener("pointerdown", show);
+    c.addEventListener("pointerleave", () => { histTip.style.display = "none"; });
+  });
+}
+
+document.getElementById("historyBtn").onclick = () => {
+  histEx = currentExercise;
+  setupEl.style.display = "none";
+  historyEl.style.display = "flex";
+  pushScreen("history");
+  renderHistory();
+};
+document.getElementById("histBackBtn").onclick = () => history.back();
+
 // ---------- System back button (Android) ----------
 // Sub-screens push a history entry; popping it closes the screen instead of exiting the app.
 function pushScreen(name) {
@@ -1342,6 +1523,9 @@ window.addEventListener("popstate", () => {
     setupEl.style.display = "flex";
   } else if (remindersEl.style.display === "flex") {
     remindersEl.style.display = "none";
+    setupEl.style.display = "flex";
+  } else if (historyEl.style.display === "flex") {
+    historyEl.style.display = "none";
     setupEl.style.display = "flex";
   } else if (doneEl.style.display === "flex") {
     doneEl.style.display = "none";
