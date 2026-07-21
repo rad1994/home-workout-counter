@@ -91,6 +91,24 @@
     background: var(--accent); color: #fff; box-shadow: 0 2px 12px var(--accent-glow);
   }
 
+  .picker-row { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
+  .goal-picker.mini { padding: 4px; gap: 2px; }
+  .goal-picker.mini button { width: 38px; height: 38px; font-size: 1.2rem; }
+  .goal-picker.mini > div { font-size: 1.3rem; font-weight: 800; min-width: 52px; font-variant-numeric: tabular-nums; }
+
+  /* ---- Rest overlay ---- */
+  #rest {
+    display: none; position: absolute; inset: 0; z-index: 5;
+    flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+    background: rgba(18, 18, 18, .9); backdrop-filter: blur(6px); text-align: center;
+  }
+  #rest .section-label { margin-bottom: 0; }
+  #restTimer {
+    font-size: 6.5rem; font-weight: 800; line-height: 1; color: var(--accent);
+    font-variant-numeric: tabular-nums; text-shadow: 0 0 48px var(--accent-glow);
+  }
+  #restNext { color: var(--muted); font-size: 1rem; }
+
   .primary-btn {
     padding: 16px 56px; font-size: 1.15rem; font-weight: 700; letter-spacing: .3px; white-space: nowrap;
     border: none; border-radius: 14px; cursor: pointer; color: #fff;
@@ -258,6 +276,24 @@
         <button data-dir="down">10 → 0</button>
       </div>
     </div>
+    <div class="picker-row">
+      <div>
+        <div class="section-label">Sets</div>
+        <div class="goal-picker mini">
+          <button id="setsMinus">−</button>
+          <div id="setsValue">1</div>
+          <button id="setsPlus">+</button>
+        </div>
+      </div>
+      <div>
+        <div class="section-label">Rest</div>
+        <div class="goal-picker mini">
+          <button id="restMinus">−</button>
+          <div id="restValue">60s</div>
+          <button id="restPlus">+</button>
+        </div>
+      </div>
+    </div>
     <button id="startBtn" class="primary-btn">Start Workout</button>
     <button id="remindersBtn" class="secondary-btn">⏰ Reminders</button>
   </div>
@@ -292,6 +328,12 @@
     </div>
     <div id="hint"></div>
     <button id="stopBtn">Stop</button>
+    <div id="rest">
+      <div class="section-label">Rest</div>
+      <div id="restTimer">60</div>
+      <div id="restNext"></div>
+      <button id="skipRestBtn" class="secondary-btn">Skip Rest</button>
+    </div>
     <div id="loading"><div class="spinner"></div><div>Loading pose model…</div></div>
   </div>
 
@@ -499,6 +541,24 @@ dirButtons.forEach(b => b.onclick = () => {
 });
 updateDirLabels();
 
+// ---------- Sets & rest pickers ----------
+let totalSets = Math.min(10, Math.max(1, parseInt(localStorage.getItem("workout-sets")) || 1));
+let restSec = Math.min(300, Math.max(15, parseInt(localStorage.getItem("workout-rest")) || 60));
+const setsValue = document.getElementById("setsValue");
+const restValue = document.getElementById("restValue");
+function updateSetsRest() {
+  setsValue.textContent = totalSets;
+  restValue.textContent = restSec < 60 ? restSec + "s"
+    : Math.floor(restSec / 60) + ":" + String(restSec % 60).padStart(2, "0");
+  localStorage.setItem("workout-sets", totalSets);
+  localStorage.setItem("workout-rest", restSec);
+}
+document.getElementById("setsMinus").onclick = () => { totalSets = Math.max(1, totalSets - 1); updateSetsRest(); };
+document.getElementById("setsPlus").onclick = () => { totalSets = Math.min(10, totalSets + 1); updateSetsRest(); };
+document.getElementById("restMinus").onclick = () => { restSec = Math.max(15, restSec - 15); updateSetsRest(); };
+document.getElementById("restPlus").onclick = () => { restSec = Math.min(300, restSec + 15); updateSetsRest(); };
+updateSetsRest();
+
 // ---------- Audio ----------
 let audioCtx = null;
 function ensureAudio() {
@@ -550,6 +610,13 @@ let candState = null;
 let candFrames = 0;
 let phaseStartTime = 0;    // when the current phase began (for minPhaseMs)
 
+// Sets state
+let currentSet = 1;
+let totalRepsDone = 0;     // reps accumulated in finished sets
+let resting = false;
+let restInterval = null;
+let restRemaining = 0;
+
 async function loadModel() {
   if (landmarker) return;
   const vision = await FilesetResolver.forVisionTasks(
@@ -599,10 +666,15 @@ function drawSkeleton(lm) {
 function onRep() {
   reps++;
   updateRepDisplay();
-  if (reps === goal) {
-    // Goal reached — celebrate but keep counting until the user presses Stop
+  if (reps === goal && currentSet < totalSets) {
+    // Set finished, more sets to go — rest break
     goalFanfare();
-    speak("Goal reached! " + goal + " done. Keep going!");
+    speak("Set " + currentSet + " done! Rest time.");
+    startRest();
+  } else if (reps === goal) {
+    // Final set's goal reached — celebrate but keep counting until Stop
+    goalFanfare();
+    speak(totalSets > 1 ? "All sets done! Keep going!" : "Goal reached! " + goal + " done. Keep going!");
     repDisplay.style.color = "#3B82F6";
     repDisplay.style.textShadow = "0 0 24px rgba(59, 130, 246, .5)";
   } else {
@@ -610,6 +682,52 @@ function onRep() {
     // Countdown mode speaks reps remaining; past the goal it speaks the extras
     speak(String(countDown && reps < goal ? goal - reps : reps));
   }
+}
+
+// ---------- Rest between sets ----------
+const restEl = document.getElementById("rest");
+const restTimer = document.getElementById("restTimer");
+const restNext = document.getElementById("restNext");
+
+function startRest() {
+  resting = true;
+  restRemaining = restSec;
+  restTimer.textContent = restRemaining;
+  restNext.textContent = "Next: Set " + (currentSet + 1) + " of " + totalSets;
+  restEl.style.display = "flex";
+  restInterval = setInterval(() => {
+    restRemaining--;
+    restTimer.textContent = Math.max(0, restRemaining);
+    if (restRemaining > 0 && restRemaining <= 3) tone(660, 0, 0.12);
+    if (restRemaining <= 0) endRest();
+  }, 1000);
+}
+
+function endRest() {
+  clearInterval(restInterval);
+  restInterval = null;
+  restEl.style.display = "none";
+  resting = false;
+  currentSet++;
+  totalRepsDone += reps;
+  reps = 0;
+  phase = "up";
+  ready = false;
+  readyFrames = 0;
+  candState = null;
+  candFrames = 0;
+  updateRepDisplay();
+  updateSetLabel();
+  stateBadge.textContent = "Get in position";
+  stateBadge.className = "";
+  speak("Set " + currentSet + ". Get into the starting position.");
+}
+
+document.getElementById("skipRestBtn").onclick = () => { if (resting) endRest(); };
+
+function updateSetLabel() {
+  exerciseLabel.textContent = EXERCISES[currentExercise].name
+    + (totalSets > 1 ? " · Set " + currentSet + "/" + totalSets : "");
 }
 
 function updateRepDisplay() {
@@ -625,6 +743,7 @@ function updateRepDisplay() {
 let lastVideoTime = -1;
 function loop() {
   if (!running) return;
+  if (resting) { requestAnimationFrame(loop); return; }
   if (video.currentTime !== lastVideoTime && video.readyState >= 2) {
     lastVideoTime = video.currentTime;
     const result = landmarker.detectForVideo(video, performance.now());
@@ -717,11 +836,15 @@ async function startWorkout() {
   readyFrames = 0;
   candState = null;
   candFrames = 0;
+  currentSet = 1;
+  totalRepsDone = 0;
+  resting = false;
+  restEl.style.display = "none";
   updateRepDisplay();
   repDisplay.style.color = "";
   repDisplay.style.textShadow = "";
   goalDisplay.textContent = countDown ? "to go / " + goal : "/ " + goal;
-  exerciseLabel.textContent = ex.name;
+  updateSetLabel();
   stateBadge.textContent = "Get in position";
   stateBadge.className = "";
   hint.textContent = "";
@@ -738,7 +861,7 @@ async function startWorkout() {
     await loadModel();
     loadingEl.style.display = "none";
     running = true;
-    speak(goal + " " + ex.name + ". Get into the starting position.");
+    speak((totalSets > 1 ? totalSets + " sets of " : "") + goal + " " + ex.name + ". Get into the starting position.");
     requestAnimationFrame(loop);
   } catch (err) {
     loadingEl.style.display = "none";
@@ -758,12 +881,18 @@ function stopCamera() {
 
 function stopWorkout(showDone) {
   stopCamera();
+  if (restInterval) { clearInterval(restInterval); restInterval = null; }
+  resting = false;
+  restEl.style.display = "none";
   workoutEl.style.display = "none";
   if (showDone) {
-    doneTitle.textContent = reps >= goal ? "🎉 Goal reached!" : "Workout finished";
-    finalCount.textContent = reps;
+    const total = totalRepsDone + reps;
+    const target = goal * totalSets;
+    doneTitle.textContent = total >= target ? "🎉 Goal reached!" : "Workout finished";
+    finalCount.textContent = total;
     doneLabel.textContent = EXERCISES[currentExercise].name + " completed"
-      + (reps > goal ? " (goal was " + goal + ")" : "");
+      + (totalSets > 1 ? " · " + Math.min(currentSet, totalSets) + "/" + totalSets + " sets" : "")
+      + (total > target ? " (goal was " + target + ")" : "");
     doneEl.style.display = "flex";
   } else {
     setupEl.style.display = "flex";
@@ -771,7 +900,7 @@ function stopWorkout(showDone) {
 }
 
 document.getElementById("startBtn").onclick = startWorkout;
-document.getElementById("stopBtn").onclick = () => stopWorkout(reps > 0);
+document.getElementById("stopBtn").onclick = () => stopWorkout(totalRepsDone + reps > 0);
 document.getElementById("againBtn").onclick = () => {
   doneEl.style.display = "none";
   setupEl.style.display = "flex";
