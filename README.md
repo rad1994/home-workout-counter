@@ -2,7 +2,7 @@
 
 A web app that uses your phone's camera to count exercise reps automatically and plays a sound when you reach your goal.
 
-**Exercises:** Push-Ups · Squats · Jumping Jacks · Sit-Ups
+**Exercises:** Push-Ups · Squats · Jumping Jacks · Crunches
 
 ## How it works
 - Uses **MediaPipe Pose** (runs fully in the browser, no server needed) to track your body landmarks.
@@ -10,7 +10,7 @@ A web app that uses your phone's camera to count exercise reps automatically and
   - **Push-Ups** — elbow angle (< 95° down, > 155° up), side view
   - **Squats** — knee angle (< 110° down, > 160° up), front or side view
   - **Jumping Jacks** — wrists above head + ankle spread vs shoulder width, front view
-  - **Sit-Ups** — hip angle (< 80° crunched, > 115° lying), side view
+  - **Crunches** — hip angle (< 80° crunched, > 115° lying), side view
 - Each rep: beep + spoken count. Goal reached: fanfare + voice announcement.
 
 ## Running it on your phone
