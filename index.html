@@ -79,7 +79,13 @@
     transition: background .15s;
   }
   .goal-picker button:active { background: var(--accent-soft); }
-  #goalValue { font-size: 2.4rem; font-weight: 800; min-width: 96px; font-variant-numeric: tabular-nums; }
+  #goalValue {
+    font-size: 2.4rem; font-weight: 800; width: 96px; font-variant-numeric: tabular-nums;
+    background: transparent; border: none; color: var(--text); text-align: center;
+    font-family: inherit; padding: 0; appearance: textfield; -moz-appearance: textfield;
+  }
+  #goalValue::-webkit-inner-spin-button, #goalValue::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  #goalValue:focus { outline: none; color: var(--accent); }
 
   .segmented {
     display: flex; background: var(--card); border: 1.5px solid var(--border);
@@ -211,8 +217,10 @@
     background: var(--card); border: 1.5px solid var(--border);
     border-radius: 12px; padding: 10px 14px; font-size: .88rem;
   }
-  .hist-item .when { color: var(--muted); }
+  .hist-info { display: flex; flex-direction: column; gap: 2px; text-align: left; }
+  .hist-item .when { color: var(--muted); font-size: .78rem; }
   .hist-item .result { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .hist-repeat { padding: 7px 14px; font-size: .8rem; flex-shrink: 0; }
   .hist-empty { color: var(--muted); font-size: .9rem; text-align: center; line-height: 1.5; max-width: 340px; }
 
   #confirmStop {
@@ -348,7 +356,7 @@
       <div class="section-label">Goal</div>
       <div class="goal-picker">
         <button id="goalMinus">−</button>
-        <div id="goalValue">10</div>
+        <input id="goalValue" type="number" inputmode="numeric" min="1" max="200" value="10">
         <button id="goalPlus">+</button>
       </div>
     </div>
@@ -700,8 +708,19 @@ selectExercise("pushup");
 // ---------- Goal picker ----------
 let goal = 10;
 const goalValue = document.getElementById("goalValue");
-document.getElementById("goalMinus").onclick = () => { goal = Math.max(1, goal - 1); goalValue.textContent = goal; updateDirLabels(); };
-document.getElementById("goalPlus").onclick = () => { goal = Math.min(200, goal + 1); goalValue.textContent = goal; updateDirLabels(); };
+function setGoal(v) {
+  goal = Math.min(200, Math.max(1, Math.round(v) || 1));
+  goalValue.value = goal;
+  updateDirLabels();
+}
+document.getElementById("goalMinus").onclick = () => setGoal(goal - 1);
+document.getElementById("goalPlus").onclick = () => setGoal(goal + 1);
+// Typed input: track valid values while typing, clamp/normalize when leaving the field
+goalValue.oninput = () => {
+  const v = parseInt(goalValue.value);
+  if (v >= 1 && v <= 200) { goal = v; updateDirLabels(); }
+};
+goalValue.onchange = () => setGoal(parseInt(goalValue.value));
 
 // ---------- Counting direction (up: 0 -> goal, down: goal -> 0) ----------
 let countDown = localStorage.getItem("workout-countdir") === "down";
@@ -1193,7 +1212,12 @@ function loadHistory() {
 }
 function saveWorkoutRecord(total) {
   const list = loadHistory();
-  list.push({ t: Date.now(), ex: currentExercise, reps: total, goal: goal * totalSets, sets: Math.min(currentSet, totalSets) });
+  list.push({
+    t: Date.now(), ex: currentExercise, reps: total, goal: goal * totalSets,
+    sets: Math.min(currentSet, totalSets),
+    // planned config, so the session can be repeated exactly
+    gps: goal, ps: totalSets
+  });
   if (list.length > 500) list.splice(0, list.length - 500);
   localStorage.setItem(HIST_KEY, JSON.stringify(list));
 }
@@ -1225,10 +1249,14 @@ function renderHistory() {
     listEl.innerHTML = '<p class="hist-empty">No ' + EXERCISES[histEx].name +
       ' workouts yet.<br>Finish a session and it will show up here.</p>';
   } else {
-    listEl.innerHTML = data.slice(-10).reverse().map(r =>
-      '<div class="hist-item"><span class="when">' + fmtFull(r.t) + '</span><span class="result">' +
-      r.reps + ' reps' + (r.sets > 1 ? ' · ' + r.sets + ' sets' : '') + '</span></div>'
+    listEl.innerHTML = data.slice(-10).reverse().map((r, j) =>
+      '<div class="hist-item"><div class="hist-info"><span class="when">' + fmtFull(r.t) + '</span><span class="result">' +
+      r.reps + ' reps' + (r.sets > 1 ? ' · ' + r.sets + ' sets' : '') + '</span></div>' +
+      '<button class="chip hist-repeat" data-i="' + (data.length - 1 - j) + '">↻ Repeat</button></div>'
     ).join("");
+    listEl.querySelectorAll(".hist-repeat").forEach(b => {
+      b.onclick = () => repeatWorkout(data[+b.dataset.i]);
+    });
   }
   renderHistChart(data);
 }
@@ -1290,6 +1318,16 @@ function renderHistChart(data) {
     c.addEventListener("pointerdown", show);
     c.addEventListener("pointerleave", () => { histTip.style.display = "none"; });
   });
+}
+
+// Load a past session's setup (exercise, per-set goal, sets) and return to the start screen
+function repeatWorkout(r) {
+  selectExercise(r.ex);
+  const ps = Math.min(10, Math.max(1, r.ps || r.sets || 1));
+  totalSets = ps;
+  updateSetsRest();
+  setGoal(r.gps || Math.round(r.goal / ps) || 10);
+  history.back();
 }
 
 document.getElementById("historyBtn").onclick = () => {
