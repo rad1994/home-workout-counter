@@ -173,6 +173,20 @@
   #stopBtn:active { transform: translateX(-50%) scale(.97); }
 
   /* ---- Done screen ---- */
+  #confirmStop {
+    position: fixed; inset: 0; z-index: 40; display: none;
+    align-items: center; justify-content: center; padding: 24px;
+    background: rgba(0, 0, 0, .65);
+  }
+  .confirm-box {
+    display: flex; flex-direction: column; gap: 14px; text-align: center;
+    background: var(--card); border: 1.5px solid var(--border); border-radius: 18px;
+    padding: 26px 22px; width: 100%; max-width: 340px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, .5);
+  }
+  .confirm-box h2 { font-size: 1.3rem; font-weight: 800; }
+  .confirm-box p { color: var(--muted); font-size: .92rem; line-height: 1.5; margin-bottom: 4px; }
+
   #done {
     display: none; flex-direction: column; align-items: center; justify-content: center;
     height: 100%; gap: 18px; text-align: center; padding: 24px;
@@ -428,6 +442,16 @@
       <button id="skipRestBtn" class="secondary-btn">Skip Rest</button>
     </div>
     <div id="loading"><div class="spinner"></div><div>Loading pose model…</div></div>
+  </div>
+
+  <!-- End-workout confirmation -->
+  <div id="confirmStop">
+    <div class="confirm-box">
+      <h2>End workout?</h2>
+      <p>Your current session will stop and you'll see the summary.</p>
+      <button id="confirmEndBtn" class="primary-btn" style="width:100%">End Session</button>
+      <button id="confirmContinueBtn" class="secondary-btn" style="width:100%">Continue Workout</button>
+    </div>
   </div>
 
   <!-- Done -->
@@ -1068,7 +1092,7 @@ function stopWorkout(showDone) {
 }
 
 document.getElementById("startBtn").onclick = startWorkout;
-document.getElementById("stopBtn").onclick = () => history.back();
+document.getElementById("stopBtn").onclick = () => { skipStopConfirm = true; history.back(); };
 document.getElementById("againBtn").onclick = () => history.back();
 
 // ---------- Reminders ----------
@@ -1291,7 +1315,25 @@ document.getElementById("soundBackBtn").onclick = () => history.back();
 function pushScreen(name) {
   history.pushState({ screen: name }, "");
 }
+// During a workout, system back first asks for confirmation; the Stop button
+// and the dialog's "End Session" set this flag to stop without asking again.
+let skipStopConfirm = false;
+const confirmStopEl = document.getElementById("confirmStop");
+document.getElementById("confirmEndBtn").onclick = () => {
+  confirmStopEl.style.display = "none";
+  skipStopConfirm = true;
+  history.back();
+};
+document.getElementById("confirmContinueBtn").onclick = () => {
+  confirmStopEl.style.display = "none";
+};
 window.addEventListener("popstate", () => {
+  if (confirmStopEl.style.display === "flex") {
+    // Back pressed while the dialog is open: treat as "continue", restore the entry.
+    confirmStopEl.style.display = "none";
+    pushScreen("workout");
+    return;
+  }
   if (guideEl.style.display === "flex") {
     guideEl.style.display = "none";
     setupEl.style.display = "flex";
@@ -1305,7 +1347,13 @@ window.addEventListener("popstate", () => {
     doneEl.style.display = "none";
     setupEl.style.display = "flex";
   } else if (workoutEl.style.display === "block") {
-    stopWorkout(totalRepsDone + reps > 0);
+    if (skipStopConfirm) {
+      skipStopConfirm = false;
+      stopWorkout(totalRepsDone + reps > 0);
+    } else {
+      pushScreen("workout");
+      confirmStopEl.style.display = "flex";
+    }
   }
   // Setup screen visible: stale entry (e.g. camera error) — ignore.
 });
