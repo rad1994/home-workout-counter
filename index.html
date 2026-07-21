@@ -30,12 +30,13 @@
 
   /* ---- Setup screen ---- */
   #setup {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    display: flex; flex-direction: column; align-items: center; justify-content: safe center;
     height: 100%; gap: 22px; padding: 24px; text-align: center; overflow-y: auto;
     background:
       radial-gradient(60% 40% at 50% 0%, rgba(59, 130, 246, .10), transparent 70%),
       var(--bg);
   }
+  #setup > *, #reminders > * { flex-shrink: 0; }
   #setup h1 { font-size: 1.7rem; font-weight: 800; letter-spacing: .3px; }
   #setup h1 .accent { color: var(--accent); }
   .tagline { color: var(--muted); font-size: .9rem; margin-top: -14px; }
@@ -77,8 +78,21 @@
   .goal-picker button:active { background: var(--accent-soft); }
   #goalValue { font-size: 2.4rem; font-weight: 800; min-width: 96px; font-variant-numeric: tabular-nums; }
 
+  .segmented {
+    display: flex; background: var(--card); border: 1.5px solid var(--border);
+    border-radius: 999px; padding: 4px; gap: 4px;
+  }
+  .segmented button {
+    padding: 10px 16px; border: none; border-radius: 999px; cursor: pointer;
+    background: transparent; color: var(--muted); font-size: .9rem; font-weight: 600;
+    font-family: inherit; white-space: nowrap; transition: background .15s, color .15s;
+  }
+  .segmented button.active {
+    background: var(--accent); color: #fff; box-shadow: 0 2px 12px var(--accent-glow);
+  }
+
   .primary-btn {
-    padding: 16px 56px; font-size: 1.15rem; font-weight: 700; letter-spacing: .3px;
+    padding: 16px 56px; font-size: 1.15rem; font-weight: 700; letter-spacing: .3px; white-space: nowrap;
     border: none; border-radius: 14px; cursor: pointer; color: #fff;
     background: linear-gradient(180deg, var(--accent), var(--accent-strong));
     box-shadow: 0 6px 24px var(--accent-glow);
@@ -235,6 +249,13 @@
         <button id="goalMinus">−</button>
         <div id="goalValue">10</div>
         <button id="goalPlus">+</button>
+      </div>
+    </div>
+    <div>
+      <div class="section-label">Counting</div>
+      <div class="segmented" id="countDir">
+        <button data-dir="up" class="active">0 → 10</button>
+        <button data-dir="down">10 → 0</button>
       </div>
     </div>
     <button id="startBtn" class="primary-btn">Start Workout</button>
@@ -459,8 +480,24 @@ selectExercise("pushup");
 // ---------- Goal picker ----------
 let goal = 10;
 const goalValue = document.getElementById("goalValue");
-document.getElementById("goalMinus").onclick = () => { goal = Math.max(1, goal - 1); goalValue.textContent = goal; };
-document.getElementById("goalPlus").onclick = () => { goal = Math.min(200, goal + 1); goalValue.textContent = goal; };
+document.getElementById("goalMinus").onclick = () => { goal = Math.max(1, goal - 1); goalValue.textContent = goal; updateDirLabels(); };
+document.getElementById("goalPlus").onclick = () => { goal = Math.min(200, goal + 1); goalValue.textContent = goal; updateDirLabels(); };
+
+// ---------- Counting direction (up: 0 -> goal, down: goal -> 0) ----------
+let countDown = localStorage.getItem("workout-countdir") === "down";
+const dirButtons = document.querySelectorAll("#countDir button");
+function updateDirLabels() {
+  dirButtons.forEach(b => {
+    b.textContent = b.dataset.dir === "up" ? "0 → " + goal : goal + " → 0";
+    b.classList.toggle("active", (b.dataset.dir === "down") === countDown);
+  });
+}
+dirButtons.forEach(b => b.onclick = () => {
+  countDown = b.dataset.dir === "down";
+  localStorage.setItem("workout-countdir", countDown ? "down" : "up");
+  updateDirLabels();
+});
+updateDirLabels();
 
 // ---------- Audio ----------
 let audioCtx = null;
@@ -561,7 +598,7 @@ function drawSkeleton(lm) {
 
 function onRep() {
   reps++;
-  repDisplay.textContent = reps;
+  updateRepDisplay();
   if (reps === goal) {
     // Goal reached — celebrate but keep counting until the user presses Stop
     goalFanfare();
@@ -570,7 +607,18 @@ function onRep() {
     repDisplay.style.textShadow = "0 0 24px rgba(59, 130, 246, .5)";
   } else {
     repBeep();
-    speak(String(reps));
+    // Countdown mode speaks reps remaining; past the goal it speaks the extras
+    speak(String(countDown && reps < goal ? goal - reps : reps));
+  }
+}
+
+function updateRepDisplay() {
+  if (!countDown) {
+    repDisplay.textContent = reps;
+  } else if (reps <= goal) {
+    repDisplay.textContent = goal - reps;
+  } else {
+    repDisplay.textContent = "+" + (reps - goal);
   }
 }
 
@@ -669,10 +717,10 @@ async function startWorkout() {
   readyFrames = 0;
   candState = null;
   candFrames = 0;
-  repDisplay.textContent = "0";
+  updateRepDisplay();
   repDisplay.style.color = "";
   repDisplay.style.textShadow = "";
-  goalDisplay.textContent = "/ " + goal;
+  goalDisplay.textContent = countDown ? "to go / " + goal : "/ " + goal;
   exerciseLabel.textContent = ex.name;
   stateBadge.textContent = "Get in position";
   stateBadge.className = "";
