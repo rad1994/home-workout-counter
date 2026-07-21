@@ -995,9 +995,9 @@ function onRep() {
   updateRepDisplay();
   if (circuit) {
     if (reps === goal && circuitStep < circuit.steps.length - 1) {
-      // Exercise done, more to come — rest, then advance to the next exercise
+      // Exercise done, more to come — rest (if any), then advance to the next exercise
       goalFanfare();
-      speak(EXERCISES[currentExercise].name + " done. Rest.");
+      speak(EXERCISES[currentExercise].name + " done." + (circuit.rest > 0 ? " Rest." : ""));
       startRest();
     } else if (reps === goal) {
       // Last exercise's goal reached — celebrate, keep counting until Stop
