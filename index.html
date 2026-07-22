@@ -234,16 +234,20 @@
   .hist-repeat { padding: 7px 14px; font-size: .8rem; flex-shrink: 0; }
   .hist-empty { color: var(--muted); font-size: .9rem; text-align: center; line-height: 1.5; max-width: 340px; }
 
-  #circuitsScreen, #circuitBuilder {
+  #circuitsScreen, #circuitBuilder, #coachScreen {
     display: none; flex-direction: column; align-items: center;
     height: 100%; gap: 16px; padding: 28px 24px; overflow-y: auto;
     background:
       radial-gradient(60% 40% at 50% 0%, rgba(59, 130, 246, .10), transparent 70%),
       var(--bg);
   }
-  #circuitsScreen > *, #circuitBuilder > * { flex-shrink: 0; }
-  #circuitsScreen h1, #circuitBuilder h1 { font-size: 1.5rem; font-weight: 800; }
-  #circuitsScreen .sub { color: var(--muted); font-size: .85rem; max-width: 440px; text-align: center; line-height: 1.5; }
+  #circuitsScreen > *, #circuitBuilder > *, #coachScreen > * { flex-shrink: 0; }
+  #circuitsScreen h1, #circuitBuilder h1, #coachScreen h1 { font-size: 1.5rem; font-weight: 800; }
+  #circuitsScreen .sub, #coachScreen .sub { color: var(--muted); font-size: .85rem; max-width: 440px; text-align: center; line-height: 1.5; }
+  .coach-group { width: 100%; max-width: 440px; }
+  .coach-group .chips { justify-content: center; }
+  #coachResult { width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 8px; }
+  #coachSaved { color: #93C5FD; font-size: .85rem; text-align: center; min-height: 1.1em; }
   #circuitList { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 440px; }
   .circuit-card {
     background: var(--card); border: 1.5px solid var(--border); border-radius: 14px;
@@ -459,10 +463,28 @@
     </div>
     <button id="startBtn" class="primary-btn">Start Workout</button>
     <div class="btn-row">
+      <button id="coachBtn" class="secondary-btn">🎯 Coach</button>
       <button id="circuitsBtn" class="secondary-btn">🔁 Circuits</button>
       <button id="soundBtn" class="secondary-btn">🔊 Sound</button>
       <button id="historyBtn" class="secondary-btn">📊 History</button>
     </div>
+  </div>
+
+  <!-- Coach: goal-based workout generator -->
+  <div id="coachScreen">
+    <h1>🎯 Workout Coach</h1>
+    <p class="sub">Answer two questions and get a workout built for your goal.</p>
+    <div class="coach-group">
+      <div class="section-label">What's your goal?</div>
+      <div class="chips" id="coachGoals"></div>
+    </div>
+    <div class="coach-group">
+      <div class="section-label">Your level</div>
+      <div class="chips" id="coachLevels"></div>
+    </div>
+    <button id="coachGenBtn" class="primary-btn" style="width:100%; max-width:440px;">Generate my workout</button>
+    <div id="coachResult"></div>
+    <button id="coachBackBtn" class="secondary-btn" style="width:100%; max-width:440px;">Back</button>
   </div>
 
   <!-- Circuits: saved templates -->
@@ -1660,6 +1682,96 @@ document.getElementById("newCircuitBtn").onclick = () => openBuilder(null);
 document.getElementById("circuitsBackBtn").onclick = () => history.back();
 document.getElementById("builderBackBtn").onclick = () => history.back();
 
+// ---------- Coach: goal-based workout generator ----------
+const coachEl = document.getElementById("coachScreen");
+const COACH_GOALS = [
+  { key: "strength",  label: "💪 Strength" },
+  { key: "endurance", label: "🏃 Endurance" },
+  { key: "fatburn",   label: "🔥 Fat burn" },
+  { key: "general",   label: "⭐ General fitness" }
+];
+const COACH_LEVELS = [
+  { key: "beginner",     label: "Beginner" },
+  { key: "intermediate", label: "Intermediate" },
+  { key: "advanced",     label: "Advanced" }
+];
+// Baseline reps per exercise for each fitness level
+const LEVEL_REPS = {
+  beginner:     { pushup: 8,  squat: 10, jack: 20, situp: 10 },
+  intermediate: { pushup: 12, squat: 15, jack: 30, situp: 15 },
+  advanced:     { pushup: 18, squat: 22, jack: 40, situp: 20 }
+};
+// Each goal picks which exercises, how many rounds, the rest, and a rep multiplier:
+// strength = fewer reps + longer rest; endurance = more reps; fat burn = short rest + cardio-heavy.
+const GOAL_PLAN = {
+  strength:  { name: "Strength Builder",  base: ["pushup", "squat", "situp"],         rounds: 3, rest: 60, repMul: 0.7 },
+  endurance: { name: "Endurance Booster", base: ["pushup", "squat", "jack", "situp"], rounds: 2, rest: 30, repMul: 1.25 },
+  fatburn:   { name: "Fat-Burn Circuit",  base: ["jack", "squat", "pushup", "situp"], rounds: 3, rest: 15, repMul: 1.0 },
+  general:   { name: "Full-Body Fitness", base: ["pushup", "squat", "jack", "situp"], rounds: 2, rest: 30, repMul: 1.0 }
+};
+
+let coachGoal = "general";
+let coachLevel = "beginner";
+
+function generatePlan(goal, level) {
+  const g = GOAL_PLAN[goal];
+  const reps = LEVEL_REPS[level];
+  const base = g.base.map(ex => ({ ex, goal: Math.max(1, Math.round(reps[ex] * g.repMul)) }));
+  const steps = [];
+  for (let r = 0; r < g.rounds; r++) base.forEach(s => steps.push({ ex: s.ex, goal: s.goal }));
+  return { name: g.name, rest: g.rest, steps, rounds: g.rounds, base };
+}
+
+function buildChoiceChips(box, options, getSel, setSel) {
+  box.innerHTML = "";
+  options.forEach(o => {
+    const chip = document.createElement("button");
+    chip.className = "chip" + (getSel() === o.key ? " active" : "");
+    chip.textContent = o.label;
+    chip.onclick = () => {
+      setSel(o.key);
+      box.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+    };
+    box.appendChild(chip);
+  });
+}
+
+function renderCoachResult(plan) {
+  const restTxt = plan.rest === 0 ? "no rest" : fmtSecs(plan.rest) + " rest";
+  const baseTxt = plan.base.map(s => EXERCISES[s.ex].name + " " + s.goal).join(" · ");
+  const box = document.getElementById("coachResult");
+  box.innerHTML =
+    '<div class="circuit-card">' +
+      '<div class="c-name">' + plan.name + '</div>' +
+      '<div class="c-steps">' + plan.rounds + ' rounds of:<br>' + baseTxt + '<br>' +
+        plan.steps.length + ' exercises total · ' + restTxt + '</div>' +
+      '<div class="c-actions">' +
+        '<button class="primary-btn c-start">▶ Start now</button>' +
+        '<div class="c-row2"><button class="secondary-btn c-save">Save to Circuits</button></div>' +
+      '</div>' +
+    '</div>' +
+    '<div id="coachSaved"></div>';
+  box.querySelector(".c-start").onclick = () => { coachEl.style.display = "none"; startCircuit(plan); };
+  box.querySelector(".c-save").onclick = () => {
+    const list = loadCircuits();
+    list.push({ id: "c" + Date.now(), name: plan.name, rest: plan.rest, steps: plan.steps.map(s => ({ ex: s.ex, goal: s.goal })) });
+    saveCircuits(list);
+    document.getElementById("coachSaved").textContent = "✓ Saved to Circuits";
+  };
+}
+
+document.getElementById("coachBtn").onclick = () => {
+  buildChoiceChips(document.getElementById("coachGoals"), COACH_GOALS, () => coachGoal, v => coachGoal = v);
+  buildChoiceChips(document.getElementById("coachLevels"), COACH_LEVELS, () => coachLevel, v => coachLevel = v);
+  document.getElementById("coachResult").innerHTML = "";
+  setupEl.style.display = "none";
+  coachEl.style.display = "flex";
+  pushScreen("coach");
+};
+document.getElementById("coachGenBtn").onclick = () => renderCoachResult(generatePlan(coachGoal, coachLevel));
+document.getElementById("coachBackBtn").onclick = () => history.back();
+
 // ---------- System back button (Android) ----------
 // Sub-screens push a history entry; popping it closes the screen instead of exiting the app.
 function pushScreen(name) {
@@ -1699,6 +1811,9 @@ window.addEventListener("popstate", () => {
     renderCircuits();
   } else if (circuitsEl.style.display === "flex") {
     circuitsEl.style.display = "none";
+    setupEl.style.display = "flex";
+  } else if (coachEl.style.display === "flex") {
+    coachEl.style.display = "none";
     setupEl.style.display = "flex";
   } else if (doneEl.style.display === "flex") {
     doneEl.style.display = "none";
