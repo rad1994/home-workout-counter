@@ -246,8 +246,19 @@
   #circuitsScreen .sub, #coachScreen .sub { color: var(--muted); font-size: .85rem; max-width: 440px; text-align: center; line-height: 1.5; }
   .coach-group { width: 100%; max-width: 440px; }
   .coach-group .chips { justify-content: center; }
-  #coachResult { width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 8px; }
+  #coachResult { width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 12px; }
   #coachSaved { color: #93C5FD; font-size: .85rem; text-align: center; min-height: 1.1em; }
+  .plan-head {
+    font-size: 1.15rem; font-weight: 800; text-align: center;
+    padding: 10px; background: var(--accent-soft); border: 1.5px solid var(--accent);
+    border-radius: 12px; color: #fff;
+  }
+  .plan-block { background: var(--card); border: 1.5px solid var(--border); border-radius: 14px; padding: 14px 16px; text-align: left; }
+  .plan-block .section-label { text-align: left; margin-bottom: 8px; }
+  .plan-tips { margin: 0; padding-left: 20px; line-height: 1.6; font-size: .88rem; color: var(--muted); }
+  .plan-tips li { margin-bottom: 5px; }
+  .plan-schedule { font-size: .9rem; line-height: 1.5; color: var(--text); }
+  .plan-schedule .hl { color: #93C5FD; font-weight: 700; }
   #circuitList { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 440px; }
   .circuit-card {
     background: var(--card); border: 1.5px solid var(--border); border-radius: 14px;
@@ -473,16 +484,20 @@
   <!-- Coach: goal-based workout generator -->
   <div id="coachScreen">
     <h1>🎯 Workout Coach</h1>
-    <p class="sub">Answer two questions and get a workout built for your goal.</p>
+    <p class="sub">Answer a few questions and get a weekly plan built for your goal.</p>
     <div class="coach-group">
       <div class="section-label">What's your goal?</div>
       <div class="chips" id="coachGoals"></div>
     </div>
     <div class="coach-group">
+      <div class="section-label">Focus area</div>
+      <div class="chips" id="coachFocus"></div>
+    </div>
+    <div class="coach-group">
       <div class="section-label">Your level</div>
       <div class="chips" id="coachLevels"></div>
     </div>
-    <button id="coachGenBtn" class="primary-btn" style="width:100%; max-width:440px;">Generate my workout</button>
+    <button id="coachGenBtn" class="primary-btn" style="width:100%; max-width:440px;">Build my plan</button>
     <div id="coachResult"></div>
     <button id="coachBackBtn" class="secondary-btn" style="width:100%; max-width:440px;">Back</button>
   </div>
@@ -1682,13 +1697,19 @@ document.getElementById("newCircuitBtn").onclick = () => openBuilder(null);
 document.getElementById("circuitsBackBtn").onclick = () => history.back();
 document.getElementById("builderBackBtn").onclick = () => history.back();
 
-// ---------- Coach: goal-based workout generator ----------
+// ---------- Coach: an agent that asks your goal/level and plans a weekly cycle ----------
 const coachEl = document.getElementById("coachScreen");
 const COACH_GOALS = [
-  { key: "strength",  label: "💪 Strength" },
+  { key: "lose",      label: "🔥 Lose weight" },
+  { key: "muscle",    label: "💪 Build muscle" },
   { key: "endurance", label: "🏃 Endurance" },
-  { key: "fatburn",   label: "🔥 Fat burn" },
   { key: "general",   label: "⭐ General fitness" }
+];
+const COACH_FOCUS = [
+  { key: "full",  label: "Full body" },
+  { key: "upper", label: "Upper body" },
+  { key: "lower", label: "Lower body" },
+  { key: "core",  label: "Core" }
 ];
 const COACH_LEVELS = [
   { key: "beginner",     label: "Beginner" },
@@ -1701,25 +1722,73 @@ const LEVEL_REPS = {
   intermediate: { pushup: 12, squat: 15, jack: 30, situp: 15 },
   advanced:     { pushup: 18, squat: 22, jack: 40, situp: 20 }
 };
-// Each goal picks which exercises, how many rounds, the rest, and a rep multiplier:
-// strength = fewer reps + longer rest; endurance = more reps; fat burn = short rest + cardio-heavy.
-const GOAL_PLAN = {
-  strength:  { name: "Strength Builder",  base: ["pushup", "squat", "situp"],         rounds: 3, rest: 60, repMul: 0.7 },
-  endurance: { name: "Endurance Booster", base: ["pushup", "squat", "jack", "situp"], rounds: 2, rest: 30, repMul: 1.25 },
-  fatburn:   { name: "Fat-Burn Circuit",  base: ["jack", "squat", "pushup", "situp"], rounds: 3, rest: 15, repMul: 1.0 },
-  general:   { name: "Full-Body Fitness", base: ["pushup", "squat", "jack", "situp"], rounds: 2, rest: 30, repMul: 1.0 }
+// Goal sets the training rhythm: sessions per week, rest, rounds, a rep multiplier, and coaching tips.
+const GOAL_INFO = {
+  lose: {
+    name: "Lose Weight", days: 4, rest: 15, rounds: 3, repMul: 1.1,
+    tips: [
+      "Train about 4× a week — short rest keeps your heart rate up and burns more.",
+      "Warm up with ~20 jumping jacks before you start.",
+      "Keep the rest between exercises short; push through the whole round.",
+      "Pair this with a light calorie deficit for faster results."
+    ]
+  },
+  muscle: {
+    name: "Build Muscle", days: 3, rest: 60, rounds: 4, repMul: 0.7,
+    tips: [
+      "Train 3× a week, resting at least one day between sessions — muscle grows during rest.",
+      "Fewer reps, more rounds: move slowly and with control, no rushing.",
+      "Rest ~60s between exercises so you can push hard on the next one.",
+      "Once the last round feels easy, add 1–2 reps."
+    ]
+  },
+  endurance: {
+    name: "Endurance", days: 4, rest: 25, rounds: 3, repMul: 1.3,
+    tips: [
+      "Train 4× a week with higher reps and a steady pace.",
+      "Breathe evenly — don't hold your breath through the reps.",
+      "As your stamina grows, shorten the rest rather than adding reps.",
+      "Consistency beats intensity here; keep the sessions regular."
+    ]
+  },
+  general: {
+    name: "General Fitness", days: 3, rest: 30, rounds: 2, repMul: 1.0,
+    tips: [
+      "Train 3× a week for a balanced, sustainable routine.",
+      "Hit all four movements each session for full-body fitness.",
+      "Rest ~30s between exercises — enough to recover, not to cool down.",
+      "Progress by adding reps or a round every few weeks."
+    ]
+  }
+};
+// Focus decides which exercises lead and which one gets extra volume.
+const FOCUS_INFO = {
+  full:  { name: "Full body",  order: ["pushup", "squat", "jack", "situp"], emph: null },
+  upper: { name: "Upper body", order: ["pushup", "situp", "jack"],          emph: "pushup" },
+  lower: { name: "Lower body", order: ["squat", "jack", "situp"],           emph: "squat" },
+  core:  { name: "Core",       order: ["situp", "pushup", "jack"],          emph: "situp" }
 };
 
 let coachGoal = "general";
+let coachFocus = "full";
 let coachLevel = "beginner";
 
-function generatePlan(goal, level) {
-  const g = GOAL_PLAN[goal];
-  const reps = LEVEL_REPS[level];
-  const base = g.base.map(ex => ({ ex, goal: Math.max(1, Math.round(reps[ex] * g.repMul)) }));
+function repsFor(ex, goal, level, emph) {
+  const base = LEVEL_REPS[level][ex] * GOAL_INFO[goal].repMul * (ex === emph ? 1.35 : 1);
+  return Math.max(1, Math.round(base));
+}
+function makeWorkout(name, order, rounds, goal, level, emph, rest) {
+  const base = order.map(ex => ({ ex, goal: repsFor(ex, goal, level, emph) }));
   const steps = [];
-  for (let r = 0; r < g.rounds; r++) base.forEach(s => steps.push({ ex: s.ex, goal: s.goal }));
-  return { name: g.name, rest: g.rest, steps, rounds: g.rounds, base };
+  for (let r = 0; r < rounds; r++) base.forEach(s => steps.push({ ex: s.ex, goal: s.goal }));
+  return { name, rest, steps, rounds, base };
+}
+// Build a weekly program: two rotating workouts (A = your focus, B = balanced full body).
+function buildProgram(goal, focus, level) {
+  const g = GOAL_INFO[goal], f = FOCUS_INFO[focus];
+  const wA = makeWorkout("Day A · " + f.name, f.order, g.rounds, goal, level, f.emph, g.rest);
+  const wB = makeWorkout("Day B · Full body", FOCUS_INFO.full.order, Math.max(2, g.rounds - 1), goal, level, null, g.rest);
+  return { goal: g, focus: f, level, workouts: [wA, wB] };
 }
 
 function buildChoiceChips(box, options, getSel, setSel) {
@@ -1737,39 +1806,59 @@ function buildChoiceChips(box, options, getSel, setSel) {
   });
 }
 
-function renderCoachResult(plan) {
-  const restTxt = plan.rest === 0 ? "no rest" : fmtSecs(plan.rest) + " rest";
-  const baseTxt = plan.base.map(s => EXERCISES[s.ex].name + " " + s.goal).join(" · ");
+function workoutCardHtml(w, idx) {
+  const restTxt = w.rest === 0 ? "no rest" : fmtSecs(w.rest) + " rest";
+  const baseTxt = w.base.map(s => EXERCISES[s.ex].name + " " + s.goal).join(" · ");
+  return '<div class="circuit-card">' +
+      '<div class="c-name">' + w.name + '</div>' +
+      '<div class="c-steps">' + w.rounds + ' rounds of:<br>' + baseTxt + '<br>' +
+        w.steps.length + ' exercises total · ' + restTxt + '</div>' +
+      '<div class="c-actions"><button class="primary-btn c-start" data-i="' + idx + '">▶ Start now</button></div>' +
+    '</div>';
+}
+
+function renderProgram(prog) {
   const box = document.getElementById("coachResult");
+  const levelLabel = prog.level.charAt(0).toUpperCase() + prog.level.slice(1);
   box.innerHTML =
-    '<div class="circuit-card">' +
-      '<div class="c-name">' + plan.name + '</div>' +
-      '<div class="c-steps">' + plan.rounds + ' rounds of:<br>' + baseTxt + '<br>' +
-        plan.steps.length + ' exercises total · ' + restTxt + '</div>' +
-      '<div class="c-actions">' +
-        '<button class="primary-btn c-start">▶ Start now</button>' +
-        '<div class="c-row2"><button class="secondary-btn c-save">Save to Circuits</button></div>' +
-      '</div>' +
+    '<div class="plan-head">' + prog.goal.name + ' · ' + prog.focus.name + ' · ' + levelLabel + '</div>' +
+    '<div class="plan-block">' +
+      '<div class="section-label">Where to start</div>' +
+      '<ul class="plan-tips">' + prog.goal.tips.map(t => '<li>' + t + '</li>').join("") +
+        '<li>Not sure about form? Tap 📖 <b>How to perform</b> on the main screen first.</li>' +
+      '</ul>' +
     '</div>' +
+    '<div class="plan-block">' +
+      '<div class="section-label">Weekly schedule</div>' +
+      '<div class="plan-schedule"><span class="hl">' + prog.goal.days + '× per week.</span> ' +
+        'Alternate the two workouts below (A, B, A…), resting at least a day between sessions. ' +
+        'Each week, add 1–2 reps or a round once it feels easy — reassess after ~4 weeks.</div>' +
+    '</div>' +
+    '<div class="section-label" style="align-self:flex-start;">Your workouts</div>' +
+    prog.workouts.map((w, i) => workoutCardHtml(w, i)).join("") +
+    '<button class="primary-btn" id="savePlanBtn" style="width:100%;">Save plan to Circuits</button>' +
     '<div id="coachSaved"></div>';
-  box.querySelector(".c-start").onclick = () => { coachEl.style.display = "none"; startCircuit(plan); };
-  box.querySelector(".c-save").onclick = () => {
+  box.querySelectorAll(".c-start").forEach(b => {
+    b.onclick = () => { coachEl.style.display = "none"; startCircuit(prog.workouts[+b.dataset.i]); };
+  });
+  document.getElementById("savePlanBtn").onclick = () => {
     const list = loadCircuits();
-    list.push({ id: "c" + Date.now(), name: plan.name, rest: plan.rest, steps: plan.steps.map(s => ({ ex: s.ex, goal: s.goal })) });
+    prog.workouts.forEach(w => list.push({ id: "c" + Date.now() + Math.random().toString(36).slice(2, 6), name: w.name, rest: w.rest, steps: w.steps.map(s => ({ ex: s.ex, goal: s.goal })) }));
     saveCircuits(list);
-    document.getElementById("coachSaved").textContent = "✓ Saved to Circuits";
+    document.getElementById("coachSaved").textContent = "✓ Both workouts saved to Circuits";
   };
 }
 
 document.getElementById("coachBtn").onclick = () => {
   buildChoiceChips(document.getElementById("coachGoals"), COACH_GOALS, () => coachGoal, v => coachGoal = v);
+  buildChoiceChips(document.getElementById("coachFocus"), COACH_FOCUS, () => coachFocus, v => coachFocus = v);
   buildChoiceChips(document.getElementById("coachLevels"), COACH_LEVELS, () => coachLevel, v => coachLevel = v);
   document.getElementById("coachResult").innerHTML = "";
   setupEl.style.display = "none";
   coachEl.style.display = "flex";
   pushScreen("coach");
 };
-document.getElementById("coachGenBtn").onclick = () => renderCoachResult(generatePlan(coachGoal, coachLevel));
+document.getElementById("coachGenBtn").onclick = () => renderProgram(buildProgram(coachGoal, coachFocus, coachLevel));
 document.getElementById("coachBackBtn").onclick = () => history.back();
 
 // ---------- System back button (Android) ----------
