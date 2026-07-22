@@ -1700,7 +1700,25 @@ window.addEventListener("popstate", () => {
 });
 
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
+  // Auto-update: when a new service worker takes control, reload so the user
+  // always sees the latest version without having to navigate away and back.
+  let refreshing = false;
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (refreshing || !hadController) return; // skip the first-install claim
+    refreshing = true;
+    window.location.reload();
+  });
+  window.addEventListener("load", async () => {
+    try {
+      const reg = await navigator.serviceWorker.register("sw.js");
+      reg.update();
+      // Re-check for a new version each time the app returns to the foreground
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") reg.update();
+      });
+    } catch (e) { /* offline or unsupported — ignore */ }
+  });
 }
 </script>
 </body>
