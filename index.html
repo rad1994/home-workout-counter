@@ -127,6 +127,17 @@
   }
   .primary-btn:active { transform: scale(.97); box-shadow: 0 3px 12px var(--accent-glow); }
 
+  /* ---- Update toast ---- */
+  #updateToast {
+    position: fixed; top: 16px; left: 50%; z-index: 100;
+    transform: translateX(-50%) translateY(-24px);
+    background: linear-gradient(180deg, var(--accent), var(--accent-strong)); color: #fff;
+    padding: 12px 20px; border-radius: 999px; font-weight: 700; font-size: .9rem;
+    box-shadow: 0 8px 28px var(--accent-glow); max-width: 90%; text-align: center;
+    opacity: 0; pointer-events: none; transition: opacity .3s ease, transform .3s ease;
+  }
+  #updateToast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
   /* ---- Workout screen ---- */
   #workout { display: none; position: relative; height: 100%; background: var(--bg); }
   #videoWrap { position: absolute; inset: 0; }
@@ -397,6 +408,9 @@
 </head>
 <body>
 <div id="app">
+
+  <!-- Update notification -->
+  <div id="updateToast">✓ App updated to the latest version</div>
 
   <!-- Setup -->
   <div id="setup">
@@ -693,7 +707,9 @@ const EXERCISES = {
         [LM.HIP_L, LM.KNEE_L, LM.ANKLE_L],
         [LM.HIP_R, LM.KNEE_R, LM.ANKLE_R]);
       if (angle === null) return null;
-      if (angle < 110) return "down";
+      // "down" requires a real squat depth (knee bent to roughly parallel),
+      // so a shallow dip or a forward bend doesn't count
+      if (angle < 100) return "down";
       if (angle > 160) return "up";
       return undefined;
     }
@@ -1707,8 +1723,18 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (refreshing || !hadController) return; // skip the first-install claim
     refreshing = true;
+    sessionStorage.setItem("ccJustUpdated", "1"); // show a toast after the reload
     window.location.reload();
   });
+  // After an auto-update reload, briefly show a confirmation toast
+  if (sessionStorage.getItem("ccJustUpdated")) {
+    sessionStorage.removeItem("ccJustUpdated");
+    const toast = document.getElementById("updateToast");
+    if (toast) {
+      setTimeout(() => toast.classList.add("show"), 60);
+      setTimeout(() => toast.classList.remove("show"), 4000);
+    }
+  }
   window.addEventListener("load", async () => {
     try {
       const reg = await navigator.serviceWorker.register("sw.js");
