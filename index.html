@@ -164,6 +164,35 @@
   }
   .primary-btn:active { transform: scale(.97); box-shadow: 0 3px 12px var(--accent-glow); }
 
+  /* ---- Start button fire animation ---- */
+  #startBtn { position: relative; }
+  #startBtn.igniting {
+    background: linear-gradient(180deg, #ffca28, #ff5722 60%, #e53935);
+    box-shadow: 0 0 34px rgba(255, 87, 34, .85), 0 6px 26px rgba(244, 67, 54, .6);
+    animation: btnShake .5s ease;
+  }
+  @keyframes btnShake {
+    0%, 100% { transform: translateX(0); } 20% { transform: translateX(-2px); }
+    40% { transform: translateX(2px); } 60% { transform: translateX(-1.5px); } 80% { transform: translateX(1.5px); }
+  }
+  .fire { position: absolute; inset: 0; pointer-events: none; overflow: visible; border-radius: inherit; z-index: 3; }
+  .fire .flame {
+    position: absolute; bottom: 2px; width: 22px; height: 22px; transform: translateX(-50%);
+    background: radial-gradient(circle at 50% 38%, #fffde7 0%, #ffe082 28%, #ff9800 54%, rgba(244, 67, 54, .5) 74%, transparent 78%);
+    border-radius: 50%; filter: blur(2px); mix-blend-mode: screen;
+    animation: flameUp var(--d, .55s) ease-out var(--delay, 0s) forwards;
+  }
+  @keyframes flameUp {
+    0% { opacity: 0; transform: translateX(-50%) translateY(8px) scale(.5); }
+    18% { opacity: 1; }
+    70% { opacity: 1; }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-54px) scale(1.15); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #startBtn.igniting { animation: none; }
+    .fire .flame { animation-duration: .3s; }
+  }
+
   /* ---- Update toast ---- */
   #updateToast {
     position: fixed; top: 16px; left: 50%; z-index: 100;
@@ -1393,7 +1422,29 @@ function stopWorkout(showDone) {
   }
 }
 
-document.getElementById("startBtn").onclick = () => { circuit = null; startWorkout(); };
+// Brief fire burst on the Start button before the workout begins
+function igniteButton(btn, done) {
+  btn.classList.add("igniting");
+  const fire = document.createElement("div");
+  fire.className = "fire";
+  const n = 16;
+  for (let i = 0; i < n; i++) {
+    const f = document.createElement("span");
+    f.className = "flame";
+    f.style.left = (4 + (i / (n - 1)) * 92) + "%";
+    f.style.setProperty("--d", (440 + Math.random() * 260) + "ms");
+    f.style.setProperty("--delay", (Math.random() * 130) + "ms");
+    f.style.width = f.style.height = (16 + Math.random() * 12) + "px";
+    fire.appendChild(f);
+  }
+  btn.appendChild(fire);
+  setTimeout(() => { fire.remove(); btn.classList.remove("igniting"); done(); }, 550);
+}
+
+document.getElementById("startBtn").onclick = (e) => {
+  circuit = null;
+  igniteButton(e.currentTarget, startWorkout);
+};
 document.getElementById("stopBtn").onclick = () => { skipStopConfirm = true; history.back(); };
 document.getElementById("againBtn").onclick = () => history.back();
 
