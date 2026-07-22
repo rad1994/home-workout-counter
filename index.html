@@ -30,6 +30,43 @@
 
   #app { display: flex; flex-direction: column; height: 100%; }
 
+  /* ---- Splash / launch animation ---- */
+  #splash {
+    position: fixed; inset: 0; z-index: 200;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+    background:
+      radial-gradient(70% 50% at 50% 40%, rgba(59, 130, 246, .16), transparent 70%),
+      var(--bg);
+    animation: splashOut .5s ease 1.7s forwards;
+  }
+  .splash-logo {
+    width: 120px; height: 120px; border-radius: 30px; overflow: hidden;
+    box-shadow: 0 12px 48px var(--accent-glow);
+    animation: splashLogo .9s cubic-bezier(.2, .8, .2, 1) both, splashPulse 2s ease-in-out .9s infinite;
+  }
+  .splash-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .splash-title { font-size: 1.5rem; font-weight: 800; letter-spacing: .3px; animation: splashUp .7s ease .35s both; }
+  .splash-title .accent { color: var(--accent); }
+  .splash-dots { display: flex; gap: 9px; animation: splashUp .7s ease .55s both; }
+  .splash-dots span {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--accent);
+    animation: splashDot 1s ease-in-out infinite;
+  }
+  .splash-dots span:nth-child(2) { animation-delay: .15s; }
+  .splash-dots span:nth-child(3) { animation-delay: .3s; }
+  @keyframes splashOut { to { opacity: 0; visibility: hidden; } }
+  @keyframes splashLogo { from { opacity: 0; transform: scale(.6) translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes splashPulse {
+    0%, 100% { box-shadow: 0 12px 44px var(--accent-glow); }
+    50% { box-shadow: 0 12px 64px var(--accent-glow), 0 0 0 2px var(--accent); }
+  }
+  @keyframes splashUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @keyframes splashDot { 0%, 100% { opacity: .3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-5px); } }
+  @media (prefers-reduced-motion: reduce) {
+    #splash { animation: splashOut .3s ease 1s forwards; }
+    .splash-logo, .splash-title, .splash-dots, .splash-dots span { animation: none; }
+  }
+
   /* ---- Setup screen ---- */
   #setup {
     display: flex; flex-direction: column; align-items: center; justify-content: safe center;
@@ -423,6 +460,13 @@
 </head>
 <body>
 <div id="app">
+
+  <!-- Splash / launch animation -->
+  <div id="splash">
+    <div class="splash-logo"><img src="images/app-icon-192.png" alt=""></div>
+    <div class="splash-title">Home <span class="accent">Workout</span> Counter</div>
+    <div class="splash-dots"><span></span><span></span><span></span></div>
+  </div>
 
   <!-- Update notification -->
   <div id="updateToast">✓ App updated to the latest version</div>
@@ -1918,6 +1962,22 @@ window.addEventListener("popstate", () => {
   }
   // Setup screen visible: stale entry (e.g. camera error) — ignore.
 });
+
+// ---------- Splash screen ----------
+// A CSS animation fades the splash out on its own; this lets a tap skip it and
+// removes it from the layout afterwards.
+(() => {
+  const splash = document.getElementById("splash");
+  if (!splash) return;
+  const remove = () => { splash.style.display = "none"; };
+  splash.addEventListener("click", () => {
+    splash.style.animation = "none";
+    splash.style.transition = "opacity .3s ease";
+    splash.style.opacity = "0";
+    setTimeout(remove, 320);
+  });
+  setTimeout(remove, 2400);
+})();
 
 if ("serviceWorker" in navigator) {
   // Auto-update: when a new service worker takes control, reload so the user
