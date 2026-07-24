@@ -1528,32 +1528,68 @@ function stopWorkout(showDone) {
 }
 
 // Brief fire burst on the Start button before the workout begins
+// Canvas particle explosion bursting from the Start button, then run the workout
 function igniteButton(btn, done) {
   btn.classList.add("igniting");
-  const fire = document.createElement("div");
-  fire.className = "fire";
-  const n = 16;
-  for (let i = 0; i < n; i++) {
-    const f = document.createElement("span");
-    f.className = "flame";
-    f.style.left = (4 + (i / (n - 1)) * 92) + "%";
-    f.style.setProperty("--d", (440 + Math.random() * 260) + "ms");
-    f.style.setProperty("--delay", (Math.random() * 130) + "ms");
-    f.style.width = (20 + Math.random() * 14) + "px";
-    f.style.height = (32 + Math.random() * 20) + "px";
-    fire.appendChild(f);
+  const rect = btn.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+  const cv = document.createElement("canvas");
+  cv.style.cssText = "position:fixed;inset:0;z-index:250;pointer-events:none";
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = innerWidth * dpr; cv.height = innerHeight * dpr;
+  cv.style.width = innerWidth + "px"; cv.style.height = innerHeight + "px";
+  document.body.appendChild(cv);
+  const ctx = cv.getContext("2d");
+  ctx.scale(dpr, dpr);
+
+  const parts = [];
+  for (let i = 0; i < 110; i++) {                // sparks / embers
+    const a = Math.random() * Math.PI * 2, sp = 2 + Math.random() * 11;
+    parts.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1.5,
+      life: 1, decay: 0.014 + Math.random() * 0.02, r: 1.5 + Math.random() * 3.5, hue: 15 + Math.random() * 40 });
   }
-  for (let i = 0; i < 10; i++) {
-    const e2 = document.createElement("span");
-    e2.className = "ember";
-    e2.style.left = (8 + Math.random() * 84) + "%";
-    e2.style.setProperty("--d", (520 + Math.random() * 260) + "ms");
-    e2.style.setProperty("--delay", (Math.random() * 200) + "ms");
-    e2.style.setProperty("--dx", (Math.random() * 26 - 13) + "px");
-    fire.appendChild(e2);
+  for (let i = 0; i < 22; i++) {                 // slow smoky fireballs
+    const a = Math.random() * Math.PI * 2, sp = 0.5 + Math.random() * 3;
+    parts.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 2,
+      life: 1, decay: 0.02 + Math.random() * 0.02, r: 8 + Math.random() * 10, hue: 20 + Math.random() * 20, soft: true });
   }
-  btn.appendChild(fire);
-  setTimeout(() => { fire.remove(); btn.classList.remove("igniting"); done(); }, 550);
+
+  const t0 = performance.now();
+  function frame(now) {
+    const t = (now - t0) / 1000;
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    ctx.globalCompositeOperation = "lighter";
+
+    const fa = Math.max(0, 1 - t / 0.16);        // central flash
+    if (fa > 0) {
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 190);
+      g.addColorStop(0, "rgba(255,245,215," + fa + ")");
+      g.addColorStop(0.4, "rgba(255,150,45," + fa * 0.6 + ")");
+      g.addColorStop(1, "rgba(255,80,0,0)");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, 190, 0, 7); ctx.fill();
+    }
+    const ring = t * 560, ra = Math.max(0, 1 - t / 0.32);   // shockwave
+    if (ra > 0) {
+      ctx.strokeStyle = "rgba(255,190,90," + ra + ")";
+      ctx.lineWidth = 3 + (1 - ra) * 7;
+      ctx.beginPath(); ctx.arc(cx, cy, ring, 0, 7); ctx.stroke();
+    }
+    for (const p of parts) {
+      if (p.life <= 0) continue;
+      p.vy += 0.24; p.vx *= 0.986; p.vy *= 0.986;
+      p.x += p.vx; p.y += p.vy; p.life -= p.decay;
+      const rr = p.r * (p.soft ? 2 : 3) * (0.6 + p.life * 0.6);
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rr);
+      const l = Math.max(0, p.life);
+      g.addColorStop(0, "hsla(" + (p.hue + 25) + ",100%,88%," + l + ")");
+      g.addColorStop(0.5, "hsla(" + p.hue + ",100%,55%," + l * (p.soft ? 0.35 : 0.8) + ")");
+      g.addColorStop(1, "hsla(" + (p.hue - 10) + ",100%,45%,0)");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, rr, 0, 7); ctx.fill();
+    }
+    if (t < 0.85) requestAnimationFrame(frame); else cv.remove();
+  }
+  requestAnimationFrame(frame);
+  setTimeout(() => { btn.classList.remove("igniting"); cv.remove(); done(); }, 560);
 }
 
 document.getElementById("startBtn").onclick = (e) => {
