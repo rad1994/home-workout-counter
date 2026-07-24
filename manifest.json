@@ -1,6 +1,6 @@
 {
-  "name": "Home Workout Counter",
-  "short_name": "Workout",
+  "name": "Smart Reps",
+  "short_name": "Smart Reps",
   "description": "Count your push-ups, squats, crunches and jumping jacks.",
   "start_url": "./index.html",
   "scope": "./",
