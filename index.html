@@ -907,8 +907,9 @@ const EXERCISES = {
         [LM.SHOULDER_L, LM.ELBOW_L, LM.WRIST_L],
         [LM.SHOULDER_R, LM.ELBOW_R, LM.WRIST_R]);
       if (angle === null) return null;
-      if (angle < 100) return "down";
-      if (angle > 150) return "up";
+      // "down" = chest genuinely lowered (elbows bent past ~90°), "up" = arms locked out
+      if (angle < 90) return "down";
+      if (angle > 158) return "up";
       return undefined;
     }
   },
@@ -916,7 +917,7 @@ const EXERCISES = {
     name: "Squats",
     hint: "Prop the phone up 2–3 m away so your whole body is visible from the front or the side.",
     trackHint: "Stand up straight with your legs visible",
-    minPhaseMs: 350,
+    minPhaseMs: 400,
     classify(lm) {
       // Posture gate: torso must stay fairly upright (a forward lean while
       // squatting is fine, lying or plank positions are not)
@@ -926,10 +927,10 @@ const EXERCISES = {
         [LM.HIP_L, LM.KNEE_L, LM.ANKLE_L],
         [LM.HIP_R, LM.KNEE_R, LM.ANKLE_R]);
       if (angle === null) return null;
-      // "down" requires a real squat depth (knee bent to roughly parallel),
-      // so a shallow dip or a forward bend doesn't count
-      if (angle < 100) return "down";
-      if (angle > 160) return "up";
+      // "down" requires a deep squat (thighs at or below parallel), so a shallow
+      // dip or a forward bend never counts; "up" needs a full stand-up
+      if (angle < 85) return "down";
+      if (angle > 165) return "up";
       return undefined;
     }
   },
@@ -945,10 +946,14 @@ const EXERCISES = {
       if (torso === null || torso < 50) return null;
       const shoulderWidth = Math.abs(lm[LM.SHOULDER_L].x - lm[LM.SHOULDER_R].x);
       const ankleSpread = Math.abs(lm[LM.ANKLE_L].x - lm[LM.ANKLE_R].x);
-      const wristsUp = lm[LM.WRIST_L].y < lm[LM.NOSE].y && lm[LM.WRIST_R].y < lm[LM.NOSE].y;
-      const wristsDown = lm[LM.WRIST_L].y > lm[LM.SHOULDER_L].y && lm[LM.WRIST_R].y > lm[LM.SHOULDER_R].y;
-      const legsOpen = ankleSpread > shoulderWidth * 1.4;
-      const legsClosed = ankleSpread < shoulderWidth * 1.1;
+      // Hands must clear the head (not just reach nose level) and feet must open
+      // clearly wider than the shoulders, so half-hearted arm swings don't count
+      const headClear = lm[LM.NOSE].y - 0.05;
+      const wristsUp = lm[LM.WRIST_L].y < headClear && lm[LM.WRIST_R].y < headClear;
+      const hipY = (lm[LM.HIP_L].y + lm[LM.HIP_R].y) / 2;
+      const wristsDown = lm[LM.WRIST_L].y > hipY && lm[LM.WRIST_R].y > hipY;
+      const legsOpen = ankleSpread > shoulderWidth * 1.6;
+      const legsClosed = ankleSpread < shoulderWidth * 1.05;
       // "down" = closed position (arms low, feet together), "up" = star position
       if (wristsUp && legsOpen) return "up";
       if (wristsDown && legsClosed) return "down";
@@ -974,8 +979,10 @@ const EXERCISES = {
         [LM.SHOULDER_L, LM.HIP_L, LM.KNEE_L],
         [LM.SHOULDER_R, LM.HIP_R, LM.KNEE_R]);
       if (angle === null) return null;
-      if (angle < 80) return "down";
-      if (angle > 115) return "up";
+      // "down" = a real crunch (torso lifted well toward the knees),
+      // "up" = shoulders back on the floor
+      if (angle < 68) return "down";
+      if (angle > 120) return "up";
       return undefined;
     }
   }
