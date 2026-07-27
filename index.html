@@ -868,8 +868,8 @@ function vis(lm, ...idx) {
 // Average joint angle across whichever sides are visible; null if neither is
 function sideAngle(lm, tripletL, tripletR) {
   const angles = [];
-  if (vis(lm, ...tripletL) > 0.5) angles.push(angleDeg(lm[tripletL[0]], lm[tripletL[1]], lm[tripletL[2]]));
-  if (vis(lm, ...tripletR) > 0.5) angles.push(angleDeg(lm[tripletR[0]], lm[tripletR[1]], lm[tripletR[2]]));
+  if (vis(lm, ...tripletL) > 0.3) angles.push(angleDeg(lm[tripletL[0]], lm[tripletL[1]], lm[tripletL[2]]));
+  if (vis(lm, ...tripletR) > 0.3) angles.push(angleDeg(lm[tripletR[0]], lm[tripletR[1]], lm[tripletR[2]]));
   if (angles.length === 0) return null;
   return angles.reduce((s, v) => s + v, 0) / angles.length;
 }
@@ -877,7 +877,7 @@ function sideAngle(lm, tripletL, tripletR) {
 // Torso inclination in degrees: 0 = horizontal (plank / lying), 90 = standing upright.
 // Landmark coords are normalized to the frame, so rescale x by the aspect ratio.
 function torsoAngle(lm) {
-  if (vis(lm, LM.SHOULDER_L, LM.SHOULDER_R, LM.HIP_L, LM.HIP_R) < 0.5) return null;
+  if (vis(lm, LM.SHOULDER_L, LM.SHOULDER_R, LM.HIP_L, LM.HIP_R) < 0.2) return null;
   const sh = { x: (lm[LM.SHOULDER_L].x + lm[LM.SHOULDER_R].x) / 2, y: (lm[LM.SHOULDER_L].y + lm[LM.SHOULDER_R].y) / 2 };
   const hp = { x: (lm[LM.HIP_L].x + lm[LM.HIP_R].x) / 2, y: (lm[LM.HIP_L].y + lm[LM.HIP_R].y) / 2 };
   const aspect = (overlay.width || 640) / (overlay.height || 480);
@@ -940,7 +940,7 @@ const EXERCISES = {
     trackHint: "Stand facing the camera, whole body in frame",
     minPhaseMs: 250,
     classify(lm) {
-      if (vis(lm, LM.WRIST_L, LM.WRIST_R, LM.ANKLE_L, LM.ANKLE_R, LM.SHOULDER_L, LM.SHOULDER_R, LM.NOSE) < 0.35) return null;
+      if (vis(lm, LM.WRIST_L, LM.WRIST_R, LM.ANKLE_L, LM.ANKLE_R, LM.SHOULDER_L, LM.SHOULDER_R, LM.NOSE) < 0.15) return null;
       // Posture gate: must be standing upright
       const torso = torsoAngle(lm);
       if (torso === null || torso < 45) return null;
