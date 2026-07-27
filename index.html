@@ -940,20 +940,22 @@ const EXERCISES = {
     trackHint: "Stand facing the camera, whole body in frame",
     minPhaseMs: 250,
     classify(lm) {
-      if (vis(lm, LM.WRIST_L, LM.WRIST_R, LM.ANKLE_L, LM.ANKLE_R, LM.SHOULDER_L, LM.SHOULDER_R, LM.NOSE) < 0.5) return null;
+      if (vis(lm, LM.WRIST_L, LM.WRIST_R, LM.ANKLE_L, LM.ANKLE_R, LM.SHOULDER_L, LM.SHOULDER_R, LM.NOSE) < 0.35) return null;
       // Posture gate: must be standing upright
       const torso = torsoAngle(lm);
-      if (torso === null || torso < 50) return null;
+      if (torso === null || torso < 45) return null;
       const shoulderWidth = Math.abs(lm[LM.SHOULDER_L].x - lm[LM.SHOULDER_R].x);
       const ankleSpread = Math.abs(lm[LM.ANKLE_L].x - lm[LM.ANKLE_R].x);
       // Hands must clear the head (not just reach nose level) and feet must open
       // clearly wider than the shoulders, so half-hearted arm swings don't count
       const headClear = lm[LM.NOSE].y - 0.05;
       const wristsUp = lm[LM.WRIST_L].y < headClear && lm[LM.WRIST_R].y < headClear;
-      const hipY = (lm[LM.HIP_L].y + lm[LM.HIP_R].y) / 2;
-      const wristsDown = lm[LM.WRIST_L].y > hipY && lm[LM.WRIST_R].y > hipY;
+      // Starting position stays easy to hit (arms below shoulder line, feet not
+      // spread); only the star position is strict.
+      const shoulderY = (lm[LM.SHOULDER_L].y + lm[LM.SHOULDER_R].y) / 2;
+      const wristsDown = lm[LM.WRIST_L].y > shoulderY && lm[LM.WRIST_R].y > shoulderY;
       const legsOpen = ankleSpread > shoulderWidth * 1.6;
-      const legsClosed = ankleSpread < shoulderWidth * 1.05;
+      const legsClosed = ankleSpread < shoulderWidth * 1.3;
       // "down" = closed position (arms low, feet together), "up" = star position
       if (wristsUp && legsOpen) return "up";
       if (wristsDown && legsClosed) return "down";
