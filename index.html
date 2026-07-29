@@ -234,6 +234,15 @@
   }
   #updateToast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+  /* Live angle readout for calibrating thresholds. Hidden unless enabled by
+     triple-tapping the rep counter, so it never shows up for normal users. */
+  #debugAngles {
+    display: none; margin-top: 6px; text-align: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: .78rem; color: var(--accent); opacity: .85;
+  }
+  #debugAngles.on { display: block; }
+
   /* ---- Workout screen ---- */
   #workout { display: none; position: relative; height: 100%; background: var(--bg); }
   #videoWrap { position: absolute; inset: 0; }
@@ -789,6 +798,7 @@
       <div id="stateBadge">Get in position</div>
     </div>
     <div id="hint"></div>
+    <div id="debugAngles"></div>
     <button id="stopBtn">Stop</button>
     <div id="rest">
       <div class="section-label">Rest</div>
@@ -834,6 +844,24 @@ const repDisplay = document.getElementById("repDisplay");
 const goalDisplay = document.getElementById("goalDisplay");
 const stateBadge = document.getElementById("stateBadge");
 const hint = document.getElementById("hint");
+const debugAngles = document.getElementById("debugAngles");
+
+// Threshold calibration aid: triple-tap the rep counter to toggle a live angle
+// readout. Persisted so it survives the reload an app update triggers.
+let debugOn = localStorage.getItem("debugAngles") === "1";
+if (debugOn) debugAngles.classList.add("on");
+let tapCount = 0, tapTimer = null;
+repDisplay.addEventListener("click", () => {
+  tapCount++;
+  clearTimeout(tapTimer);
+  tapTimer = setTimeout(() => { tapCount = 0; }, 600);
+  if (tapCount >= 3) {
+    tapCount = 0;
+    debugOn = !debugOn;
+    localStorage.setItem("debugAngles", debugOn ? "1" : "0");
+    debugAngles.classList.toggle("on", debugOn);
+  }
+});
 const finalCount = document.getElementById("finalCount");
 const exerciseLabel = document.getElementById("exerciseLabel");
 const exerciseHint = document.getElementById("exerciseHint");
@@ -887,6 +915,17 @@ function torsoAngle(lm) {
   return Math.atan2(dy, dx) * 180 / Math.PI;
 }
 
+// Live readout of every angle the classifiers use, so thresholds can be tuned
+// against real numbers instead of guesses.
+function debugLine(lm, state) {
+  const f = (v) => v === null ? "--" : Math.round(v);
+  const elbow = sideAngle(lm, [LM.SHOULDER_L, LM.ELBOW_L, LM.WRIST_L], [LM.SHOULDER_R, LM.ELBOW_R, LM.WRIST_R]);
+  const knee = sideAngle(lm, [LM.HIP_L, LM.KNEE_L, LM.ANKLE_L], [LM.HIP_R, LM.KNEE_R, LM.ANKLE_R]);
+  const hipA = sideAngle(lm, [LM.SHOULDER_L, LM.HIP_L, LM.KNEE_L], [LM.SHOULDER_R, LM.HIP_R, LM.KNEE_R]);
+  const label = state === null ? "OFF" : state === undefined ? "between" : state;
+  return `torso ${f(torsoAngle(lm))}° · hip ${f(hipA)}° · knee ${f(knee)}° · elbow ${f(elbow)}° → ${label}`;
+}
+
 // ---------- Exercise definitions ----------
 // classify(lm) returns "down" | "up" | null (null = posture doesn't match the exercise
 // or landmarks not visible) | undefined (between thresholds).
@@ -898,7 +937,10 @@ const EXERCISES = {
     name: "Push-Ups",
     hint: "Place the phone on the floor 1–2 m away, viewing you from the side. Shoulders, elbows and wrists must be visible.",
     trackHint: "Get into push-up position — body horizontal, side view",
-    minPhaseMs: 200,
+    // Latency budget per phase is minPhaseMs + stableFrames/fps. At ~30fps a
+    // brisk push-up spends only ~300ms per phase, so both are kept low here.
+    minPhaseMs: 130,
+    stableFrames: 2,
     classify(lm) {
       // Posture gate: torso must be roughly horizontal (plank), so standing
       // movements like bending over don't register as push-ups
@@ -912,7 +954,7 @@ const EXERCISES = {
       // The band is kept wide enough that a fast rep still lands frames outside
       // it — too narrow a band silently drops reps at speed.
       if (angle < 100) return "down";
-      if (angle > 148) return "up";
+      if (angle > 145) return "up";
       return undefined;
     }
   },
@@ -920,7 +962,9 @@ const EXERCISES = {
     name: "Squats",
     hint: "Prop the phone up 2–3 m away so your whole body is visible from the front or the side.",
     trackHint: "Stand up straight with your legs visible",
-    minPhaseMs: 400,
+    // Lowered for a brisk cadence; depth is enforced by the angle thresholds
+    // below, not by this timer, so squats stay just as strict.
+    minPhaseMs: 250,
     classify(lm) {
       // Posture gate: torso must stay fairly upright (a forward lean while
       // squatting is fine, lying or plank positions are not)
@@ -971,7 +1015,7 @@ const EXERCISES = {
     name: "Crunches",
     hint: "Place the phone on the floor 1–2 m away, viewing you from the side. Lie down with knees bent.",
     trackHint: "Lie on your back with knees bent, side view",
-    minPhaseMs: 300,
+    minPhaseMs: 200,
     // "down" = crunched up (hip angle small), "up" = lying back down; rep counts when you return down
     classify(lm) {
       // Posture gates: knees must be bent and torso can't be upright, so a
@@ -990,9 +1034,10 @@ const EXERCISES = {
         [LM.SHOULDER_R, LM.HIP_R, LM.KNEE_R]);
       if (angle === null) return null;
       // "down" = a real crunch (shoulder blades clearly off the floor), "up" =
-      // shoulders back down. This is a crunch, not a full sit-up, so the "down"
-      // threshold is nowhere near the ~68 needed to touch the knees.
-      if (angle < 95) return "down";
+      // shoulders back down. Lying flat with knees bent already reads ~130-145,
+      // and a crunch only lifts the torso ~30 degrees, so anything below ~100
+      // demands a full sit-up rather than a crunch.
+      if (angle < 105) return "down";
       if (angle > 120) return "up";
       return undefined;
     }
@@ -1180,7 +1225,8 @@ let stream = null;
 const READY_FRAMES = 25;   // ~1 s in the start position before counting begins
 const STABLE_FRAMES = 3;   // consecutive frames required to accept a phase change
                            // (5 was slow enough to miss reps at a brisk cadence;
-                           // minPhaseMs still rejects twitches)
+                           // minPhaseMs still rejects twitches). Individual
+                           // exercises can override this via `stableFrames`.
 let ready = false;
 let readyFrames = 0;
 let candState = null;
@@ -1385,6 +1431,7 @@ function loop() {
       const lm = result.landmarks[0];
       drawSkeleton(lm);
       const state = ex.classify(lm);
+      if (debugOn) debugAngles.textContent = debugLine(lm, state);
       if (state === null) {
         hint.textContent = ex.trackHint;
         readyFrames = 0;
@@ -1421,7 +1468,7 @@ function loop() {
         }
         // Accept a phase change only after the current phase lasted minPhaseMs —
         // this rejects movements that merely flick past the thresholds
-        if (candFrames >= STABLE_FRAMES && candState !== phase
+        if (candFrames >= (ex.stableFrames ?? STABLE_FRAMES) && candState !== phase
             && performance.now() - phaseStartTime >= ex.minPhaseMs) {
           if (phase === "up" && candState === "down") {
             phase = "down";
