@@ -971,24 +971,28 @@ const EXERCISES = {
     name: "Crunches",
     hint: "Place the phone on the floor 1–2 m away, viewing you from the side. Lie down with knees bent.",
     trackHint: "Lie on your back with knees bent, side view",
-    minPhaseMs: 400,
+    minPhaseMs: 300,
     // "down" = crunched up (hip angle small), "up" = lying back down; rep counts when you return down
     classify(lm) {
       // Posture gates: knees must be bent and torso can't be upright, so a
-      // standing bow (straight legs) never registers as a sit-up
+      // standing bow (straight legs) never registers as a crunch.
+      // The torso gate must stay clear of the "down" position it has to allow —
+      // gating at 65 made the crunch unreachable, since lifting far enough to
+      // hit the hip threshold pushed the torso past the gate and returned null.
       const knee = sideAngle(lm,
         [LM.HIP_L, LM.KNEE_L, LM.ANKLE_L],
         [LM.HIP_R, LM.KNEE_R, LM.ANKLE_R]);
       if (knee === null || knee > 130) return null;
       const torso = torsoAngle(lm);
-      if (torso === null || torso > 65) return null;
+      if (torso === null || torso > 80) return null;
       const angle = sideAngle(lm,
         [LM.SHOULDER_L, LM.HIP_L, LM.KNEE_L],
         [LM.SHOULDER_R, LM.HIP_R, LM.KNEE_R]);
       if (angle === null) return null;
-      // "down" = a real crunch (torso lifted well toward the knees),
-      // "up" = shoulders back on the floor
-      if (angle < 68) return "down";
+      // "down" = a real crunch (shoulder blades clearly off the floor), "up" =
+      // shoulders back down. This is a crunch, not a full sit-up, so the "down"
+      // threshold is nowhere near the ~68 needed to touch the knees.
+      if (angle < 95) return "down";
       if (angle > 120) return "up";
       return undefined;
     }
