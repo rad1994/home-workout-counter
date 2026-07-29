@@ -897,19 +897,21 @@ const EXERCISES = {
     name: "Push-Ups",
     hint: "Place the phone on the floor 1–2 m away, viewing you from the side. Shoulders, elbows and wrists must be visible.",
     trackHint: "Get into push-up position — body horizontal, side view",
-    minPhaseMs: 350,
+    minPhaseMs: 200,
     classify(lm) {
       // Posture gate: torso must be roughly horizontal (plank), so standing
       // movements like bending over don't register as push-ups
       const torso = torsoAngle(lm);
-      if (torso === null || torso > 40) return null;
+      if (torso === null || torso > 50) return null;
       const angle = sideAngle(lm,
         [LM.SHOULDER_L, LM.ELBOW_L, LM.WRIST_L],
         [LM.SHOULDER_R, LM.ELBOW_R, LM.WRIST_R]);
       if (angle === null) return null;
-      // "down" = chest genuinely lowered (elbows bent past ~90°), "up" = arms locked out
-      if (angle < 90) return "down";
-      if (angle > 158) return "up";
+      // "down" = chest lowered (elbows past a right angle), "up" = arms extended.
+      // The band is kept wide enough that a fast rep still lands frames outside
+      // it — too narrow a band silently drops reps at speed.
+      if (angle < 100) return "down";
+      if (angle > 148) return "up";
       return undefined;
     }
   },
@@ -1171,7 +1173,9 @@ let stream = null;
 // Counting starts only after the user holds the starting ("up") position for a moment,
 // and each phase change must persist for a few frames to filter out detection flicker.
 const READY_FRAMES = 25;   // ~1 s in the start position before counting begins
-const STABLE_FRAMES = 5;   // consecutive frames required to accept a phase change
+const STABLE_FRAMES = 3;   // consecutive frames required to accept a phase change
+                           // (5 was slow enough to miss reps at a brisk cadence;
+                           // minPhaseMs still rejects twitches)
 let ready = false;
 let readyFrames = 0;
 let candState = null;
