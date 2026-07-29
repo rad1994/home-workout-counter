@@ -224,7 +224,8 @@
 
   /* ---- Update toast ---- */
   #updateToast {
-    position: fixed; top: 16px; left: 50%; z-index: 100;
+    /* above #splash (z-index 200) — otherwise the toast animates hidden behind it */
+    position: fixed; top: 16px; left: 50%; z-index: 300;
     transform: translateX(-50%) translateY(-24px);
     background: linear-gradient(180deg, var(--accent), var(--accent-strong)); color: #fff;
     padding: 12px 20px; border-radius: 999px; font-weight: 700; font-size: .9rem;
@@ -2159,8 +2160,12 @@ if ("serviceWorker" in navigator) {
     sessionStorage.removeItem("ccJustUpdated");
     const toast = document.getElementById("updateToast");
     if (toast) {
-      setTimeout(() => toast.classList.add("show"), 60);
-      setTimeout(() => toast.classList.remove("show"), 4000);
+      // Wait for the splash to finish fading out, otherwise the slide-in plays
+      // while the splash still covers the screen and the toast seems to never appear.
+      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const afterSplash = reduced ? 1400 : 2300;
+      setTimeout(() => toast.classList.add("show"), afterSplash);
+      setTimeout(() => toast.classList.remove("show"), afterSplash + 4000);
     }
   }
   window.addEventListener("load", async () => {
