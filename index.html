@@ -1016,29 +1016,29 @@ const EXERCISES = {
     hint: "Place the phone on the floor 1–2 m away, viewing you from the side. Lie down with knees bent.",
     trackHint: "Lie on your back with knees bent, side view",
     minPhaseMs: 200,
-    // "down" = crunched up (hip angle small), "up" = lying back down; rep counts when you return down
+    // Measured on torso inclination (the shoulder-hip line vs the floor), not on
+    // the shoulder-hip-knee angle. That angle already reads ~130 lying flat, so
+    // the usable band was only ~15 degrees wide — narrow enough that shoulder
+    // jitter from swinging arms crossed it in both directions, inventing reps,
+    // while real crunches were lost in the same noise. Torso inclination rests
+    // near 0 and peaks past 40, and it ignores the arms entirely.
     classify(lm) {
-      // Posture gates: knees must be bent and torso can't be upright, so a
-      // standing bow (straight legs) never registers as a crunch.
-      // The torso gate must stay clear of the "down" position it has to allow —
-      // gating at 65 made the crunch unreachable, since lifting far enough to
-      // hit the hip threshold pushed the torso past the gate and returned null.
-      const knee = sideAngle(lm,
-        [LM.HIP_L, LM.KNEE_L, LM.ANKLE_L],
-        [LM.HIP_R, LM.KNEE_R, LM.ANKLE_R]);
-      if (knee === null || knee > 130) return null;
+      if (vis(lm, LM.SHOULDER_L, LM.SHOULDER_R, LM.HIP_L, LM.HIP_R, LM.ANKLE_L, LM.ANKLE_R) < 0.2) return null;
+      // Posture gate: the body must lie along the frame — shoulders far from the
+      // ankles horizontally rather than vertically. Standing and squatting fail
+      // this, and unlike the old torso gate it can't conflict with the crunch
+      // itself, since crunching barely moves the shoulders toward the ankles.
+      const aspect = (overlay.width || 640) / (overlay.height || 480);
+      const shX = (lm[LM.SHOULDER_L].x + lm[LM.SHOULDER_R].x) / 2;
+      const shY = (lm[LM.SHOULDER_L].y + lm[LM.SHOULDER_R].y) / 2;
+      const anX = (lm[LM.ANKLE_L].x + lm[LM.ANKLE_R].x) / 2;
+      const anY = (lm[LM.ANKLE_L].y + lm[LM.ANKLE_R].y) / 2;
+      if (Math.abs(shX - anX) * aspect < Math.abs(shY - anY)) return null;
       const torso = torsoAngle(lm);
-      if (torso === null || torso > 80) return null;
-      const angle = sideAngle(lm,
-        [LM.SHOULDER_L, LM.HIP_L, LM.KNEE_L],
-        [LM.SHOULDER_R, LM.HIP_R, LM.KNEE_R]);
-      if (angle === null) return null;
-      // "down" = a real crunch (shoulder blades clearly off the floor), "up" =
-      // shoulders back down. Lying flat with knees bent already reads ~130-145,
-      // and a crunch only lifts the torso ~30 degrees, so anything below ~100
-      // demands a full sit-up rather than a crunch.
-      if (angle < 105) return "down";
-      if (angle > 120) return "up";
+      if (torso === null) return null;
+      // "up" = lying back down (the starting position), "down" = crunched up
+      if (torso > 35) return "down";
+      if (torso < 18) return "up";
       return undefined;
     }
   }
