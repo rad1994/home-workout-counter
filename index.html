@@ -924,7 +924,8 @@ function debugLine(lm, state) {
   const label = state === null ? "OFF" : state === undefined ? "between" : state;
   // Hip clearance off the floor — the signal that separates a crunch from standing up
   const clr = (lm[LM.ANKLE_L].y + lm[LM.ANKLE_R].y) / 2 - (lm[LM.HIP_L].y + lm[LM.HIP_R].y) / 2;
-  return `torso ${f(torsoAngle(lm))}° · hip ${f(hipA)}° · knee ${f(knee)}° · elbow ${f(elbow)}° · clr ${clr.toFixed(2)} → ${label}`;
+  const base = crunchBase === null ? "--" : Math.round(crunchBase);
+  return `torso ${f(torsoAngle(lm))}° (base ${base}°) · hip ${f(hipA)}° · knee ${f(knee)}° · elbow ${f(elbow)}° · clr ${clr.toFixed(2)} → ${label}`;
 }
 
 // ---------- Exercise definitions ----------
@@ -1040,11 +1041,23 @@ const EXERCISES = {
       // from a rep — during a crunch the hips never leave the mat. (y grows down.)
       const hipY = (lm[LM.HIP_L].y + lm[LM.HIP_R].y) / 2;
       if (anY - hipY > 0.12) return null;
+      // Knees stay bent throughout a crunch but straighten on the way up off the
+      // floor, so this rejects standing without ever fighting the movement itself
+      const knee = sideAngle(lm,
+        [LM.HIP_L, LM.KNEE_L, LM.ANKLE_L],
+        [LM.HIP_R, LM.KNEE_R, LM.ANKLE_R]);
+      if (knee !== null && knee > 150) return null;
       const torso = torsoAngle(lm);
       if (torso === null) return null;
-      // "up" = lying back down (the starting position), "down" = crunched up
-      if (torso > 35) return "down";
-      if (torso < 18) return "up";
+      // Judge the lift against the user's own rest position, tracked as a running
+      // minimum that drifts up slowly. Lying flat reads anywhere from 0 to ~20
+      // depending on phone tilt and body shape, so a fixed threshold that suits
+      // one setup silently misses every rep in another.
+      if (crunchBase === null || torso < crunchBase) crunchBase = torso;
+      else crunchBase = Math.min(crunchBase + 0.03, torso);
+      // "up" = back down at rest (the starting position), "down" = crunched up
+      if (torso > crunchBase + 18) return "down";
+      if (torso < crunchBase + 7) return "up";
       return undefined;
     }
   }
@@ -1226,6 +1239,13 @@ let phase = "up";
 let lostFrames = 0;
 let stream = null;
 
+// Resting torso inclination for crunches, measured live instead of assumed.
+// Lying flat does not read 0 for everyone — phone tilt, mat thickness and body
+// proportions shift it — so absolute thresholds fit one setup and fail the next.
+// Tracked as a running minimum that drifts up slowly, so a rep is judged by how
+// far the torso rises above the user's own rest position.
+let crunchBase = null;
+
 // Counting starts only after the user holds the starting ("up") position for a moment,
 // and each phase change must persist for a few frames to filter out detection flicker.
 const READY_FRAMES = 25;   // ~1 s in the start position before counting begins
@@ -1375,6 +1395,7 @@ function endRest() {
     phase = "up";
     ready = false;
     readyFrames = 0;
+    crunchBase = null;
     candState = null;
     candFrames = 0;
     updateRepDisplay();
@@ -1393,6 +1414,7 @@ function endRest() {
   phase = "up";
   ready = false;
   readyFrames = 0;
+  crunchBase = null;
   candState = null;
   candFrames = 0;
   updateRepDisplay();
@@ -1529,6 +1551,7 @@ async function startWorkout() {
   phase = "up";
   ready = false;
   readyFrames = 0;
+  crunchBase = null;
   candState = null;
   candFrames = 0;
   currentSet = 1;
