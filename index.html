@@ -746,6 +746,10 @@
       <label class="switch"><input type="checkbox" id="voiceToggle"><span class="track"></span></label>
       <span class="day-name">Voice announcements (counting, cues)</span>
     </div>
+    <div class="day-row" style="max-width:420px; width:100%;">
+      <label class="switch"><input type="checkbox" id="debugToggle"><span class="track"></span></label>
+      <span class="day-name">Show live angles (for tuning detection)</span>
+    </div>
     <div class="sound-group">
       <div class="section-label">Start signal</div>
       <div class="chips" data-event="start"></div>
@@ -846,22 +850,17 @@ const stateBadge = document.getElementById("stateBadge");
 const hint = document.getElementById("hint");
 const debugAngles = document.getElementById("debugAngles");
 
-// Threshold calibration aid: triple-tap the rep counter to toggle a live angle
-// readout. Persisted so it survives the reload an app update triggers.
+// Threshold calibration aid: a live angle readout, toggled from Sound Settings.
+// Persisted so it survives the reload an app update triggers.
 let debugOn = localStorage.getItem("debugAngles") === "1";
-if (debugOn) debugAngles.classList.add("on");
-let tapCount = 0, tapTimer = null;
-repDisplay.addEventListener("click", () => {
-  tapCount++;
-  clearTimeout(tapTimer);
-  tapTimer = setTimeout(() => { tapCount = 0; }, 600);
-  if (tapCount >= 3) {
-    tapCount = 0;
-    debugOn = !debugOn;
-    localStorage.setItem("debugAngles", debugOn ? "1" : "0");
-    debugAngles.classList.toggle("on", debugOn);
-  }
-});
+debugAngles.classList.toggle("on", debugOn);
+const debugToggle = document.getElementById("debugToggle");
+debugToggle.checked = debugOn;
+debugToggle.onchange = () => {
+  debugOn = debugToggle.checked;
+  localStorage.setItem("debugAngles", debugOn ? "1" : "0");
+  debugAngles.classList.toggle("on", debugOn);
+};
 const finalCount = document.getElementById("finalCount");
 const exerciseLabel = document.getElementById("exerciseLabel");
 const exerciseHint = document.getElementById("exerciseHint");
@@ -923,7 +922,9 @@ function debugLine(lm, state) {
   const knee = sideAngle(lm, [LM.HIP_L, LM.KNEE_L, LM.ANKLE_L], [LM.HIP_R, LM.KNEE_R, LM.ANKLE_R]);
   const hipA = sideAngle(lm, [LM.SHOULDER_L, LM.HIP_L, LM.KNEE_L], [LM.SHOULDER_R, LM.HIP_R, LM.KNEE_R]);
   const label = state === null ? "OFF" : state === undefined ? "between" : state;
-  return `torso ${f(torsoAngle(lm))}° · hip ${f(hipA)}° · knee ${f(knee)}° · elbow ${f(elbow)}° → ${label}`;
+  // Hip clearance off the floor — the signal that separates a crunch from standing up
+  const clr = (lm[LM.ANKLE_L].y + lm[LM.ANKLE_R].y) / 2 - (lm[LM.HIP_L].y + lm[LM.HIP_R].y) / 2;
+  return `torso ${f(torsoAngle(lm))}° · hip ${f(hipA)}° · knee ${f(knee)}° · elbow ${f(elbow)}° · clr ${clr.toFixed(2)} → ${label}`;
 }
 
 // ---------- Exercise definitions ----------
@@ -1034,6 +1035,11 @@ const EXERCISES = {
       const anX = (lm[LM.ANKLE_L].x + lm[LM.ANKLE_R].x) / 2;
       const anY = (lm[LM.ANKLE_L].y + lm[LM.ANKLE_R].y) / 2;
       if (Math.abs(shX - anX) * aspect < Math.abs(shY - anY)) return null;
+      // Hips must stay on the floor. Standing up sweeps the torso through the
+      // whole crunch range, so ground clearance is what separates getting up
+      // from a rep — during a crunch the hips never leave the mat. (y grows down.)
+      const hipY = (lm[LM.HIP_L].y + lm[LM.HIP_R].y) / 2;
+      if (anY - hipY > 0.12) return null;
       const torso = torsoAngle(lm);
       if (torso === null) return null;
       // "up" = lying back down (the starting position), "down" = crunched up
@@ -1437,6 +1443,9 @@ function loop() {
         readyFrames = 0;
         candState = null;
         candFrames = 0;
+        // Losing the posture invalidates the rep in progress, so a half-movement
+        // before the gap can't pair with a half-movement after it
+        phase = null;
       } else if (!ready) {
         // Wait until the user holds the starting position before counting anything
         if (state === "up") {
@@ -1470,7 +1479,13 @@ function loop() {
         // this rejects movements that merely flick past the thresholds
         if (candFrames >= (ex.stableFrames ?? STABLE_FRAMES) && candState !== phase
             && performance.now() - phaseStartTime >= ex.minPhaseMs) {
-          if (phase === "up" && candState === "down") {
+          if (phase === null) {
+            // Re-establish silently after a posture loss — never count here
+            phase = candState;
+            phaseStartTime = performance.now();
+            stateBadge.textContent = candState.toUpperCase();
+            stateBadge.className = candState;
+          } else if (phase === "up" && candState === "down") {
             phase = "down";
             phaseStartTime = performance.now();
             stateBadge.textContent = "DOWN";
